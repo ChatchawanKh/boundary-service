@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ขอบเขตการปกครอง · MapLibre</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+    <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+    <link rel="stylesheet" href="../shared/panel.css" />
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="panel"></div>
+
+    <script type="module">
+      import { bindMapLibre, createBoundaryStore } from "../../src/index.js";
+      import { BASEMAPS, BASEMAP_BOUNDARY_LAYERS, THAILAND_VIEW, dataset } from "../shared/setup.js";
+      import { mountPanel } from "../shared/panel.js";
+
+      // 1) store กลาง: ในโปรเจกต์จริงสร้างไว้ในไฟล์เดียวแล้ว import ไปใช้ทุกที่
+      const store = createBoundaryStore({ persist: { key: "admin-boundary:maplibre" } });
+
+      // 2) แผนที่ MapLibre ปกติ (maxPitch สูงขึ้นเพื่อมุมมอง 3D)
+      const map = new maplibregl.Map({
+        container: "map",
+        style: BASEMAPS.liberty,
+        ...THAILAND_VIEW,
+        maxPitch: 75,
+        hash: true,
+      });
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      map.addControl(new maplibregl.ScaleControl(), "bottom-right");
+
+      // 3) ผูก store กับแผนที่: บรรทัดเดียว ที่เหลือ store จัดการ
+      const boundary = bindMapLibre(map, store, {
+        dataset,
+        font: ["Noto Sans Regular"], // glyph ของ OpenFreeMap มีอักษรไทยในชื่อนี้
+        hideBasemapLayers: BASEMAP_BOUNDARY_LAYERS,
+      });
+
+      // 4) UI ใดๆ ก็คุยกับ store อย่างเดียว
+      mountPanel(document.getElementById("panel"), {
+        store,
+        supports3d: true,
+        sdk: "MapLibre GL 5",
+        basemaps: BASEMAPS,
+        // เปลี่ยน style ทั้งก้อน: ตัวเชื่อมใส่ชั้นขอบเขตกลับให้เอง
+        onBasemap: (name, url) => map.setStyle(url),
+      });
+
+      // เปิด console แล้วลองสั่ง store ตรงๆ เช่น store.setView("3d")
+      Object.assign(window, { map, store, boundary });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ตัวอย่างขอบเขตการปกครอง</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./shared/panel.css" />
+    <style>
+      body {
+        height: auto;
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 32px 16px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 24px;
+      }
+      p {
+        color: var(--ab-muted);
+      }
+      ul {
+        display: grid;
+        gap: 12px;
+        padding: 0;
+        list-style: none;
+      }
+      a.card {
+        display: block;
+        padding: 14px 16px;
+        border: 1px solid var(--ab-line);
+        border-radius: 10px;
+        background: var(--ab-bg);
+        color: var(--ab-fg);
+        text-decoration: none;
+      }
+      a.card:hover {
+        border-color: var(--ab-accent);
+      }
+      a.card b {
+        font-size: 16px;
+      }
+      a.card span {
+        display: block;
+        margin-top: 2px;
+        color: var(--ab-muted);
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ขอบเขตการปกครอง: ตัวอย่าง</h1>
+      <p>ทุกหน้าใช้ store กลางตัวเดียวกัน (<code>createBoundaryStore</code>) เส้นและป้ายชื่อจาก OpenFreeMap ไม่ต้องเตรียมไฟล์ข้อมูล</p>
+      <ul>
+        <li>
+          <a class="card" href="./maplibre/">
+            <b>MapLibre GL</b>
+            <span>2D, 2.5D (เอียง), 3D (ภูมิประเทศ) และสลับแผนที่ฐาน</span>
+          </a>
+        </li>
+        <li>
+          <a class="card" href="./leaflet/">
+            <b>Leaflet</b>
+            <span>ชั้นขอบเขตวาดด้วย MapLibre ที่ซ้อนอยู่ใน Leaflet ใช้กับ basemap และ marker เดิมได้</span>
+          </a>
+        </li>
+        <li>
+          <a class="card" href="./react/">
+            <b>React</b>
+            <span>store เดียวคุม MapLibre และ Leaflet พร้อมกันผ่าน hooks</span>
+          </a>
+        </li>
+      </ul>
+    </main>
+  </body>
+</html>

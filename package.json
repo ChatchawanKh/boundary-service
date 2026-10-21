@@ -1,0 +1,60 @@
+{
+  "name": "admin-boundary",
+  "version": "0.1.0",
+  "description": "ชั้นขอบเขตการปกครอง (จังหวัด/อำเภอ/ตำบล) เฉพาะประเทศไทย: เส้นและป้ายชื่อจาก OpenFreeMap พร้อม store กลาง ใช้ได้กับ MapLibre (2D/2.5D/3D), Leaflet และ React",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ChatchawanKh/boundary-service.git"
+  },
+  "homepage": "https://github.com/ChatchawanKh/boundary-service#readme",
+  "bugs": {
+    "url": "https://github.com/ChatchawanKh/boundary-service/issues"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./maplibre": "./src/maplibre.js",
+    "./leaflet": "./src/leaflet.js",
+    "./react": "./src/react.js",
+    "./server": "./src/server.js"
+  },
+  "files": [
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "serve": "node scripts/serve.mjs"
+  },
+  "peerDependencies": {
+    "@maplibre/maplibre-gl-leaflet": ">=0.0.20",
+    "leaflet": "^1.9.0",
+    "maplibre-gl": ">=2.4.0",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@maplibre/maplibre-gl-leaflet": {
+      "optional": true
+    },
+    "leaflet": {
+      "optional": true
+    },
+    "maplibre-gl": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@maplibre/maplibre-gl-style-spec": "^20.4.0"
+  },
+  "dependencies": {
+    "@mapbox/vector-tile": "^2.0.3",
+    "pbf": "^4.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

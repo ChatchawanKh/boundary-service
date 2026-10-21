@@ -1,0 +1,224 @@
+:root {
+  --ab-bg: #ffffff;
+  --ab-fg: #1f2328;
+  --ab-muted: #656d76;
+  --ab-line: #d0d7de;
+  --ab-soft: #f3f4f6;
+  --ab-accent: #6a1b9a;
+  --ab-accent-fg: #ffffff;
+  --ab-shadow: 0 4px 16px rgb(0 0 0 / 0.14);
+  --page-bg: #e9ecef;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ab-bg: #1c2128;
+    --ab-fg: #e6edf3;
+    --ab-muted: #9198a1;
+    --ab-line: #3d444d;
+    --ab-soft: #262c36;
+    --ab-accent: #b388ff;
+    --ab-accent-fg: #1c2128;
+    --ab-shadow: 0 4px 16px rgb(0 0 0 / 0.5);
+    --page-bg: #0d1117;
+  }
+}
+:root[data-theme="dark"] {
+  --ab-bg: #1c2128;
+  --ab-fg: #e6edf3;
+  --ab-muted: #9198a1;
+  --ab-line: #3d444d;
+  --ab-soft: #262c36;
+  --ab-accent: #b388ff;
+  --ab-accent-fg: #1c2128;
+  --ab-shadow: 0 4px 16px rgb(0 0 0 / 0.5);
+  --page-bg: #0d1117;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--page-bg);
+  color: var(--ab-fg);
+  font-family: "Noto Sans Thai", system-ui, sans-serif;
+}
+#map {
+  position: absolute;
+  inset: 0;
+}
+
+.ab-panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1000;
+  width: 290px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  background: var(--ab-bg);
+  color: var(--ab-fg);
+  border-radius: 10px;
+  box-shadow: var(--ab-shadow);
+  font-size: 14px;
+  line-height: 1.45;
+}
+@media (max-width: 600px) {
+  .ab-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: 45%;
+    border-radius: 12px 12px 0 0;
+  }
+}
+.ab-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ab-panel h1 {
+  margin: 0;
+  font-size: 17px;
+}
+.ab-panel h2 {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ab-muted);
+  letter-spacing: 0.02em;
+}
+.ab-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ab-soft);
+  color: var(--ab-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.ab-level {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name labels" "range out";
+  align-items: center;
+  column-gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ab-line);
+}
+.ab-level:last-child {
+  border-bottom: 0;
+}
+.ab-level input[type="range"] {
+  grid-area: range;
+  width: 100%;
+}
+.ab-level output {
+  grid-area: out;
+  min-width: 3.2em;
+  text-align: right;
+  color: var(--ab-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ab-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.ab-mini {
+  font-size: 12px;
+  color: var(--ab-muted);
+}
+/* ตัวอย่างเส้นบนพื้นสว่าง (เส้นดำ/เทามองไม่เห็นบนแผงสีเข้ม) */
+.ab-swatch {
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 12px;
+  border-radius: 3px;
+  background: #f2f2f2;
+}
+.ab-swatch::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 50%;
+  margin-top: -1.5px;
+  border-top: 3px var(--s, solid) var(--c);
+}
+.ab-seg {
+  display: flex;
+  border: 1px solid var(--ab-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ab-seg button {
+  flex: 1;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ab-fg);
+  font: inherit;
+  cursor: pointer;
+}
+.ab-seg button + button {
+  border-left: 1px solid var(--ab-line);
+}
+.ab-seg button.is-active {
+  background: var(--ab-accent);
+  color: var(--ab-accent-fg);
+}
+.ab-seg button:disabled {
+  color: var(--ab-muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.ab-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ab-row input[type="range"] {
+  flex: 1;
+}
+.ab-row[hidden] {
+  display: none;
+}
+.ab-panel select {
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid var(--ab-line);
+  border-radius: 6px;
+  background: var(--ab-bg);
+  color: var(--ab-fg);
+  font: inherit;
+}
+.ab-row select {
+  width: auto;
+  flex: 1;
+}
+.ab-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ab-muted);
+}
+.ab-panel button[data-role] {
+  padding: 5px 10px;
+  border: 1px solid var(--ab-line);
+  border-radius: 6px;
+  background: var(--ab-bg);
+  color: var(--ab-fg);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ab-panel footer {
+  margin-top: 12px;
+}

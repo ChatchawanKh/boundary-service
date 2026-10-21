@@ -1,7 +1,7 @@
 {
   "name": "admin-boundary",
   "version": "0.1.0",
-  "description": "ชั้นขอบเขตการปกครอง (จังหวัด/อำเภอ/ตำบล) เฉพาะประเทศไทย: เส้นและป้ายชื่อจาก OpenFreeMap พร้อม store กลาง ใช้ได้กับ MapLibre (2D/2.5D/3D), Leaflet และ React",
+  "description": "ชั้นขอบเขตการปกครอง (จังหวัด/อำเภอ/ตำบล) เฉพาะประเทศไทย: จังหวัด/อำเภอจาก OpenFreeMap ตำบลจาก GISTDA (ข้อมูลกรมการปกครอง) พร้อม store กลาง ใช้ได้กับ MapLibre (2D/2.5D/3D), Leaflet และ React",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ChatchawanKh/boundary-service.git"

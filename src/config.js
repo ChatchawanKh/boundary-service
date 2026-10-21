@@ -102,6 +102,15 @@ export const LABEL_STYLE = Object.freeze({
 export const OPENFREEMAP_TILEJSON = "https://tiles.openfreemap.org/planet";
 export const OPENFREEMAP_ADMIN_LEVELS = Object.freeze({ Province: 4, Amphoe: 6, Tambon: 8 });
 
+// ขอบเขตตำบล: ArcGIS MapServer ของ GISTDA (ข้อมูลกรมการปกครอง ครบ 7,408 ตำบล)
+// OSM มีเส้นตำบลแค่ราว 11% จึงใช้ชุดนี้แทนทั้งเส้นและป้ายของระดับตำบล ตั้งแต่ minzoom
+export const GISTDA_TAMBON_SERVICE = Object.freeze({
+  url: "https://gistdaportal.gistda.or.th/arcgis/rest/services/ข้อมูลเขตการปกครอง/MapServer/4",
+  minzoom: 13,
+  name: "T_Name_T",
+  area: "Shape_Area",
+});
+
 // ป้ายชื่อ: layer "place" ของ OpenFreeMap ไม่มีชื่อพื้นที่การปกครองของไทย จึงใช้จุดเมืองที่เป็นที่ตั้ง
 // ศาลากลาง/ตัวอำเภอ (field capital = admin_level ของเขตที่เมืองนั้นเป็นศูนย์กลาง) ไม่มีระดับตำบล
 export const OPENFREEMAP_CAPITAL_LEVELS = Object.freeze({ 2: "Province", 4: "Province", 6: "Amphoe" });
@@ -116,6 +125,8 @@ export const VIEW_CAMERA = Object.freeze({
 export const ATTRIBUTION = Object.freeze({
   openFreeMap:
     '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+  gistdaTambon:
+    'ขอบเขตตำบล: <a href="https://gistdaportal.gistda.or.th" target="_blank">GISTDA</a> (กรมการปกครอง)',
   terrain:
     '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank">Terrain Tiles (Mapzen/AWS)</a>',
 });

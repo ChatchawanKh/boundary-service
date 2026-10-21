@@ -1,7 +1,9 @@
 // ฝั่ง server (Node 18+): ทำ tile ขอบเขตการปกครองเฉพาะประเทศไทยจาก OpenFreeMap
 //
-//   /boundary-tiles/{z}/{x}/{y}   layer "boundary"  เส้น admin_level 4/6/8 ตัดให้เหลือเฉพาะในไทย
+//   /boundary-tiles/{z}/{x}/{y}   layer "boundary"  เส้น admin_level 4/6 ตัดให้เหลือเฉพาะในไทย
+//                                                     + เส้นตำบล (8) จาก GISTDA ตั้งแต่ซูม 13 (src/tambon.js)
 //                                 layer "label"     จุดชื่อจังหวัด/อำเภอ จากที่ตั้งศาลากลาง/ตัวอำเภอ (place.capital)
+//                                                     + ชื่อตำบลจาก GISTDA
 //
 // ทำไมต้องทำที่ server: เส้นระดับ 4/6/8 ของ OpenMapTiles ไม่มี field ประเทศ และทุกเส้นใน tile ถูกรวมเป็น
 // feature เดียว filter ฝั่ง MapLibre จึงแยกเส้นไทยออกจากเส้นประเทศเพื่อนบ้านไม่ได้
@@ -15,11 +17,13 @@ import { fileURLToPath } from "node:url";
 import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
 import {
+  GISTDA_TAMBON_SERVICE,
   OPENFREEMAP_ADMIN_LEVELS,
   OPENFREEMAP_CAPITAL_LEVELS,
   OPENFREEMAP_GLYPHS,
   OPENFREEMAP_TILEJSON,
 } from "./config.js";
+import { createTambonSource } from "./tambon.js";
 import { THAILAND_OUTLINE } from "./thailand.js";
 
 // glyph ที่มากับ package (สร้างด้วย scripts/build-glyphs.mjs) เช่น fonts/Kanit Regular/0-255.pbf
@@ -238,6 +242,8 @@ export function encodeTile(layers, extent = 4096) {
  * @param {string} [options.tilejson]  TileJSON ของ OpenMapTiles
  * @param {number[]} [options.adminLevels]  admin_level ของเส้นที่เก็บ
  * @param {Record<number, string>} [options.capitalLevels]  place.capital → ระดับของป้าย (false = ไม่ทำป้าย)
+ * @param {object|false} [options.tambon]  service ตำบลของ GISTDA { url, minzoom, name, area } ใช้แทนเส้นตำบลของ OSM
+ *   และเพิ่มป้ายชื่อตำบล หรือ false = ใช้เส้นตำบลของ OSM (ไม่มีป้าย)
  * @param {typeof fetch} [options.fetch]
  * @returns {(z: number, x: number, y: number) => Promise<Uint8Array|null>}  null = tile ว่าง
  */
@@ -246,10 +252,13 @@ export function createBoundaryTiles({
   tilejson = OPENFREEMAP_TILEJSON,
   adminLevels = Object.values(OPENFREEMAP_ADMIN_LEVELS),
   capitalLevels = OPENFREEMAP_CAPITAL_LEVELS,
+  tambon = GISTDA_TAMBON_SERVICE,
   fetch = globalThis.fetch,
 } = {}) {
   const edges = toEdges(within);
   const cache = new Map();
+  const tambonSource = tambon ? createTambonSource(tambon, fetch) : null;
+  const tambonLevel = OPENFREEMAP_ADMIN_LEVELS.Tambon;
   let template = null;
   let templateAt = 0;
 
@@ -270,6 +279,7 @@ export function createBoundaryTiles({
       const f = layer.feature(i);
       const { admin_level: level, maritime, disputed } = f.properties;
       if (!adminLevels.includes(level) || maritime === 1 || disputed === 1) continue;
+      if (tambonSource && level === tambonLevel) continue; // ใช้เส้นตำบลของ GISTDA แทน
       const lines = byLevel.get(level) ?? [];
       for (const line of f.loadGeometry()) {
         if (clipper.mode === "all") lines.push(line.map((p) => [p.x, p.y]));
@@ -305,28 +315,49 @@ export function createBoundaryTiles({
   }
 
   async function build(z, x, y) {
-    if (z > MAX_ZOOM) return null;
+    if (z > MAX_ZOOM) return { tile: null, cacheable: true };
     const res = await fetch(await tileUrl(z, x, y));
-    if (res.status === 204 || res.status === 404) return null;
+    if (res.status === 204 || res.status === 404) return { tile: null, cacheable: true };
     if (!res.ok) throw new Error(`OpenFreeMap HTTP ${res.status}`);
     const vt = new VectorTile(new Pbf(new Uint8Array(await res.arrayBuffer())));
     const extent = vt.layers.boundary?.extent ?? vt.layers.place?.extent ?? 4096;
 
     const clipper = tileClipper(edges, z, x, y, extent);
-    if (clipper.mode === "none") return null;
+    if (clipper.mode === "none") return { tile: null, cacheable: true };
 
-    const layers = [];
-    if (vt.layers.boundary) layers.push({ name: "boundary", features: boundaryFeatures(vt.layers.boundary, clipper) });
-    if (vt.layers.place && capitalLevels) layers.push({ name: "label", features: labelFeatures(vt.layers.place, clipper) });
-    return encodeTile(layers, extent);
+    const lines = vt.layers.boundary ? boundaryFeatures(vt.layers.boundary, clipper) : [];
+    const labels = vt.layers.place && capitalLevels ? labelFeatures(vt.layers.place, clipper) : [];
+
+    // ตำบลจาก GISTDA: ถ้า service ล่ม ส่ง tile ไปก่อนโดยไม่มีตำบล และไม่เก็บ cache ไว้ให้ลองใหม่ครั้งหน้า
+    let cacheable = true;
+    if (tambonSource && z >= tambon.minzoom) {
+      try {
+        const t = await tambonSource(z, x, y, extent);
+        lines.push({ type: "line", properties: { admin_level: tambonLevel, maritime: 0, disputed: 0 }, geometry: t.lines });
+        for (const l of t.labels) {
+          labels.push({ type: "point", properties: { level: "Tambon", name: l.name, rank: l.rank }, geometry: [l.point] });
+        }
+      } catch (err) {
+        console.error(`admin-boundary tambon ${z}/${x}/${y}: ${err.message}`);
+        cacheable = false;
+      }
+    }
+
+    const layers = [
+      { name: "boundary", features: lines },
+      { name: "label", features: labels },
+    ];
+    return { tile: encodeTile(layers, extent), cacheable };
   }
 
   return async (z, x, y) => {
     const key = `${z}/${x}/${y}`;
     if (cache.has(key)) return cache.get(key);
-    const tile = await build(z, x, y);
-    cache.set(key, tile);
-    if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value);
+    const { tile, cacheable } = await build(z, x, y);
+    if (cacheable) {
+      cache.set(key, tile);
+      if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value);
+    }
     return tile;
   };
 }

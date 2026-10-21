@@ -38,9 +38,11 @@ test("adminLevels ไม่ใส่บางระดับ = ไม่สร�
   assert.deepEqual(Object.keys(r.levels), ["Province"]);
 });
 
-test("attribution เป็นของ OpenFreeMap อย่างเดียว", () => {
-  assert.match(testDataset().attribution, /OpenFreeMap/);
-  assert.doesNotMatch(testDataset().attribution, /GISTDA|Vallaris/i);
+test("attribution: OpenFreeMap ขึ้นต้น + เครดิตตำบลของ GISTDA (ปิดได้)", () => {
+  const a = testDataset().attribution;
+  assert.ok(a.startsWith('<a href="https://openfreemap.org"'));
+  assert.match(a, /ขอบเขตตำบล: .*GISTDA.*กรมการปกครอง/);
+  assert.doesNotMatch(testDataset({ gistdaTambon: false }).attribution, /GISTDA/);
 });
 
 test("load() คืนผลเดิมทุกครั้ง", async () => {

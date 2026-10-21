@@ -22,7 +22,10 @@ const FONTS_DIR = fileURLToPath(new URL("../fonts/", import.meta.url));
 
 const MAX_ZOOM = 14; // source ฝั่งหน้าเว็บมีถึง z14 ซูมเกินนั้น MapLibre ขยายเอง
 const CACHE_SIZE = 2000;
-const CACHE_CONTROL = "public, max-age=86400";
+// tile: ให้เบราว์เซอร์ถามทุกครั้ง (ได้ 304 ถ้าไม่เปลี่ยน) ข้อมูลหรือโค้ดเปลี่ยนแล้วรีสตาร์ต เห็นของใหม่ทันที
+// ไม่ค้าง tile เก่าจากรุ่นก่อนที่ URL เดียวกัน · glyph ไม่เปลี่ยนตามข้อมูล cache ได้นาน
+const TILE_CACHE_CONTROL = "no-cache";
+const GLYPH_CACHE_CONTROL = "public, max-age=86400";
 const RETRY_AFTER = 60 * 1000; // โหลดข้อมูลไม่สำเร็จ รอเท่านี้ก่อนลองใหม่
 
 /* -------------------------------------------------------------------------- */
@@ -147,7 +150,7 @@ export function createBoundaryTiles({ load, minzoom, fetch = globalThis.fetch, .
       building = (load ? load() : loadAdminData({ fetch, ...loadOptions }))
         .then(async (data) => {
           const index = await buildAdminIndexAsync(data, loadOptions.service?.fields);
-          return { tile: createTileBuilder(index, minzoom), stats: { ...index.stats, ms: Date.now() - started } };
+          return { tile: createTileBuilder(index, minzoom), stats: { ...index.stats, ms: Date.now() - started, builtAt: Date.now() } };
         })
         .catch((err) => {
           building = null;
@@ -248,10 +251,8 @@ export function tileMiddleware({
       .catch((err) => console.error(`admin-boundary: โหลดข้อมูล GISTDA ไม่สำเร็จ: ${err.message}`));
   }
 
-  const send = (res, status, body, type = "application/x-protobuf") => {
-    const headers = { "Content-Type": type };
-    if (status === 200 || status === 204) headers["Cache-Control"] = CACHE_CONTROL;
-    res.writeHead(status, headers);
+  const send = (res, status, body, type = "application/x-protobuf", extra = {}) => {
+    res.writeHead(status, { "Content-Type": type, ...extra });
     res.end(body ?? undefined);
   };
 
@@ -260,15 +261,19 @@ export function tileMiddleware({
     try {
       let m = tileRe.exec(pathname);
       if (m) {
+        // ETag = เวลาที่สร้างเครือข่ายเส้น: รีสตาร์ตหรือโหลดข้อมูลใหม่แล้วทุก tile เปลี่ยน
+        const etag = `"${(await tiles.ready()).builtAt.toString(36)}"`;
+        const cacheHeaders = { "Cache-Control": TILE_CACHE_CONTROL, ETag: etag };
+        if (req.headers?.["if-none-match"] === etag) return send(res, 304, null, undefined, cacheHeaders);
         const tile = await tiles(Number(m[1]), Number(m[2]), Number(m[3]));
-        send(res, tile ? 200 : 204, tile && Buffer.from(tile));
+        send(res, tile ? 200 : 204, tile && Buffer.from(tile), undefined, cacheHeaders);
         return;
       }
       m = fontRe.exec(pathname);
       if (m) {
         const start = Number(m[2]);
         if (start % 256 !== 0 || Number(m[3]) !== start + 255) return send(res, 404, null, "text/plain");
-        send(res, 200, Buffer.from(await glyphs(decodeURIComponent(m[1]), start)));
+        send(res, 200, Buffer.from(await glyphs(decodeURIComponent(m[1]), start)), undefined, { "Cache-Control": GLYPH_CACHE_CONTROL });
         return;
       }
     } catch (err) {

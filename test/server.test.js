@@ -84,6 +84,26 @@ test("middleware: /boundary-tiles ได้ tile, path อื่นส่งต�
   assert.ok(nexted);
 });
 
+test("middleware: tile ให้เบราว์เซอร์ถามทุกครั้ง ETag เดิมได้ 304 สร้างเส้นใหม่ (รีสตาร์ต) ETag เปลี่ยน", async () => {
+  const handle = tileMiddleware({ boundary: { load: async () => adminData }, preload: false });
+  const url = `/boundary-tiles/${tileOf(100.1, 13.05, 8).join("/")}`;
+  const first = fakeRes();
+  await handle({ url, headers: {} }, first);
+  assert.equal(first.headers["Cache-Control"], "no-cache");
+  assert.ok(first.headers.ETag);
+
+  const again = fakeRes();
+  await handle({ url, headers: { "if-none-match": first.headers.ETag } }, again);
+  assert.equal(again.status, 304);
+  assert.equal(again.body, undefined);
+
+  await new Promise((r) => setTimeout(r, 5));
+  const restarted = fakeRes();
+  await tileMiddleware({ boundary: { load: async () => adminData }, preload: false })({ url, headers: { "if-none-match": first.headers.ETag } }, restarted);
+  assert.equal(restarted.status, 200);
+  assert.notEqual(restarted.headers.ETag, first.headers.ETag);
+});
+
 test("middleware: โหลดข้อมูล GISTDA ไม่สำเร็จได้ 502", async () => {
   const handle = tileMiddleware({
     boundary: {

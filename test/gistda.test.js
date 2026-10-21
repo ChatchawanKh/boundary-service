@@ -9,16 +9,28 @@ import { adminData, amphoes, provinces, tambons, tileOf } from "./admin-fixture.
 
 const ALL = { Province: 0, Amphoe: 0, Tambon: 0 };
 
-test("ขอบร่วมเก็บครั้งเดียว จำแนกระดับจากตำบลสองฝั่ง ขอบนอกไม่วาด", () => {
+test("แต่ละระดับได้ขอบครบรอบของพื้นที่ตัวเอง (เหมือนเปิด layer นั้นตรงๆ) ขอบร่วมในระดับเดียวกันวาดครั้งเดียว", () => {
   const index = buildAdminIndex(adminData);
-  const byLevel = Object.fromEntries(index.lines.map((l) => [l.level, l]));
-  assert.deepEqual(Object.keys(byLevel).map(Number).sort(), [4, 6, 8]);
-  assert.equal(index.lines.length, 3);
-  // เส้นตำบลมีจุดกลาง: ต่อเป็นเส้นเดียว 3 จุด
-  assert.equal(byLevel[8].coords.length, 6);
-  assert.equal(byLevel[6].coords.length, 4);
-  // ขอบนอกของทั้งสี่ตำบล: 3 + 2 + 2 + 3 (ล่าง/บน/ซ้าย/ขวาสุด) ช่วง ไม่วาด
+  const of = (lv) => index.lines.filter((l) => l.level === lv);
+  const segments = (lines) => lines.reduce((n, l) => n + l.coords.length / 2 - 1, 0);
+  const xs = (l) => [...l.coords].filter((_, i) => i % 2 === 0);
+  const vertical = (lines, lng) => lines.filter((l) => xs(l).every((x) => Math.abs(x * 360 - 180 - lng) < 1e-9));
+
+  // ขอบนอกของทั้งสี่ตำบล (ล่าง/บน/ซ้ายสุด/ขวาสุด) 3 + 2 + 2 + 3 ช่วง
   assert.equal(index.stats.outerEdges, 10);
+
+  // ตำบล: ขอบทุกเส้นของ layer ตำบล ครบทุกช่วงพอดี ไม่ซ้ำ
+  assert.equal(segments(of(8)), index.stats.edges);
+  assert.equal(vertical(of(8), 100.05)[0].coords.length, 6, "ขอบร่วมที่มีจุดกลางต่อเป็นเส้นเดียว 3 จุด");
+  assert.deepEqual([100.05, 100.1, 100.15].map((x) => vertical(of(8), x).length), [1, 1, 1]);
+
+  // อำเภอ: ขอบนอก + ขอบระหว่างอำเภอ (100.10) + ขอบระหว่างจังหวัด (100.15) ไม่มีขอบระหว่างตำบลในอำเภอเดียวกัน (100.05)
+  assert.deepEqual([100.05, 100.1, 100.15].map((x) => vertical(of(6), x).length), [0, 1, 1]);
+  assert.equal(segments(of(6)), 10 + 2);
+
+  // จังหวัด: ขอบนอก + ขอบระหว่างจังหวัด (100.15) เท่านั้น
+  assert.deepEqual([100.05, 100.1, 100.15].map((x) => vertical(of(4), x).length), [0, 0, 1]);
+  assert.equal(segments(of(4)), 10 + 1);
 });
 
 test("ป้ายทุกระดับวางกลางพื้นที่ ตัดคำนำหน้า (รวม อำเภ ที่สะกดผิด) พื้นที่ใหญ่ได้ rank น้อย", () => {

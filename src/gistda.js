@@ -5,11 +5,11 @@
 //
 //   1. โหลด  ตำบลแบบเต็มความละเอียดทีละจังหวัด (layer 4) + จังหวัด/อำเภอแบบย่อ (layer 2, 3) ไว้หาจุดวางป้าย
 //            เก็บ cache ลงดิสก์ รีสตาร์ตแล้วไม่ต้องดึงใหม่
-//   2. เส้น   ขอบของทุกตำบลเก็บครั้งเดียว แล้วจำแนกระดับจากตำบลสองฝั่ง:
-//            ต่างจังหวัด = เส้นจังหวัด (4), ต่างอำเภอ = เส้นอำเภอ (6), นอกนั้น = เส้นตำบล (8)
-//            ขอบที่มีตำบลฝั่งเดียว (ชายแดน/ชายฝั่ง) ไม่วาด ให้แผนที่ฐานวาด
+//   2. เส้น   ขอบของทุกตำบลเก็บครั้งเดียว พร้อมตำบลสองฝั่ง แล้วแต่ละระดับเลือกขอบที่เป็นขอบของพื้นที่ระดับนั้น:
+//            ตำบล (8) = ขอบทุกเส้นของ layer 4, อำเภอ (6) = ขอบระหว่างอำเภอ/จังหวัด, จังหวัด (4) = ขอบระหว่างจังหวัด
+//            ขอบที่มีตำบลฝั่งเดียว (ชายแดน/ชายฝั่ง) เป็นขอบของทุกระดับ แต่ละระดับจึงมีขอบครบรอบทุกพื้นที่
 //            จังหวัด ⊂ อำเภอ ⊂ ตำบลในข้อมูลชุดนี้ตรงกันทุกจุด เส้นทั้งสามระดับจึงซ้อนกันพอดี
-//   3. ย่อ    ต่อขอบเป็นเส้นยาว (ตัดที่ทางแยกและที่ระดับเปลี่ยน) แล้วย่อจุดทีละเส้นตามซูม ปลายเส้นคงที่
+//   3. ย่อ    ต่อขอบของแต่ละระดับเป็นเส้นยาว (ตัดที่ทางแยก) แล้วย่อจุดทีละเส้นตามซูม ปลายเส้นคงที่
 //            ขอบร่วมจึงยังตรงกันทุกซูม
 //   4. tile  เลือกเส้นที่ผ่านกรอบ tile ตัดตามกรอบ + buffer ส่งเป็น layer "boundary" และ "label"
 
@@ -365,78 +365,83 @@ export function createIndexBuilder(fields = GISTDA_ADMIN_SERVICE.fields) {
       if (nx.length >= 2 ** 23) throw new Error("admin-boundary: จุดเกิน 8 ล้านจุด ต้องขยาย key ของขอบ");
     },
 
-    /** จำแนกระดับ ต่อเส้น และทำป้ายจังหวัด/อำเภอ */
+    /** ทำเส้นของแต่ละระดับ และป้ายจังหวัด/อำเภอ */
     finish({ provinces, amphoes }) {
       const E = ea.length;
       const A = ea.data;
       const B = eb.data;
       const X = nx.data;
       const Y = ny.data;
+      const N = nx.length;
+      const { Province, Amphoe, Tambon } = ADMIN_LEVEL_CODES;
 
-      // ขอบที่มีตำบลฝั่งเดียว (ชายแดน/ชายฝั่ง) ไม่เก็บ ให้แผนที่ฐานวาด
-      const level = new Uint8Array(E);
+      // ระดับที่หยาบที่สุดที่ขอบนี้เป็นเส้นแบ่ง: ขอบนอก (ชายฝั่ง/ชายแดน มีตำบลฝั่งเดียว) เป็นขอบของทุกระดับ
+      const OUTER = 0;
+      const split = new Uint8Array(E);
       let outer = 0;
       for (let e = 0; e < E; e++) {
-        const s = owner1.data[e];
-        const t = owner2.data[e];
-        if (t === -1) {
+        const s1 = owner1.data[e];
+        const s2 = owner2.data[e];
+        if (s2 === -1) {
+          split[e] = OUTER;
           outer++;
-          continue;
+        } else {
+          split[e] = tProvince[s1] !== tProvince[s2] ? Province : tAmphoe[s1] !== tAmphoe[s2] ? Amphoe : Tambon;
         }
-        level[e] =
-          tProvince[s] !== tProvince[t]
-            ? ADMIN_LEVEL_CODES.Province
-            : tAmphoe[s] !== tAmphoe[t]
-              ? ADMIN_LEVEL_CODES.Amphoe
-              : ADMIN_LEVEL_CODES.Tambon;
       }
 
-      // ขอบที่แต่ละจุดต่ออยู่ (CSR)
-      const N = nx.length;
-      const start = new Int32Array(N + 1);
-      for (let e = 0; e < E; e++) {
-        if (!level[e]) continue;
-        start[A[e] + 1]++;
-        start[B[e] + 1]++;
-      }
-      for (let v = 0; v < N; v++) start[v + 1] += start[v];
-      const fill = start.slice(0, N);
-      const adj = new Int32Array(start[N]);
-      for (let e = 0; e < E; e++) {
-        if (!level[e]) continue;
-        adj[fill[A[e]]++] = e;
-        adj[fill[B[e]]++] = e;
-      }
-
-      // ต่อขอบเป็นเส้นยาว: ตัดที่จุดที่ไม่ได้มีสองขอบ หรือที่ระดับเปลี่ยน
-      const through = (v, e) => {
-        if (start[v + 1] - start[v] !== 2) return -1;
-        const o = adj[start[v]] === e ? adj[start[v] + 1] : adj[start[v]];
-        return level[o] === level[e] ? o : -1;
-      };
-      const used = new Uint8Array(E);
+      // เส้นของระดับ lv = ขอบที่แบ่งพื้นที่ระดับนั้นหรือหยาบกว่า + ขอบนอก
+      // เช่น ตำบล = ขอบทุกเส้นของ layer ตำบล, อำเภอ = ขอบระหว่างอำเภอ/จังหวัด + ขอบนอก
+      // แต่ละระดับจึงมีขอบครบรอบทุกพื้นที่ ปิดระดับอื่นแล้วไม่ขาด (เส้นที่ทับกันวาดซ้อนตามลำดับชั้น)
       const lines = [];
-      const walk = (e, from) => {
-        const lv = level[e];
-        const coords = [X[from], Y[from]];
-        let v = from;
-        for (;;) {
-          used[e] = 1;
-          v = A[e] === v ? B[e] : A[e];
-          coords.push(X[v], Y[v]);
-          const next = through(v, e);
-          if (next < 0 || used[next]) break;
-          e = next;
+      const start = new Int32Array(N + 1);
+      const used = new Uint8Array(E);
+      for (const lv of [Province, Amphoe, Tambon]) {
+        const keep = (e) => split[e] <= lv;
+
+        // ขอบที่แต่ละจุดต่ออยู่ (CSR) เฉพาะขอบของระดับนี้
+        start.fill(0);
+        for (let e = 0; e < E; e++) {
+          if (!keep(e)) continue;
+          start[A[e] + 1]++;
+          start[B[e] + 1]++;
         }
-        lines.push(makeLine(lv, coords));
-      };
-      for (let v = 0; v < N; v++) {
-        for (let i = start[v]; i < start[v + 1]; i++) {
-          const e = adj[i];
-          if (!used[e] && through(v, e) < 0) walk(e, v);
+        for (let v = 0; v < N; v++) start[v + 1] += start[v];
+        const fill = start.slice(0, N);
+        const adj = new Int32Array(start[N]);
+        for (let e = 0; e < E; e++) {
+          if (!keep(e)) continue;
+          adj[fill[A[e]]++] = e;
+          adj[fill[B[e]]++] = e;
         }
+
+        // ต่อขอบเป็นเส้นยาว: ตัดที่จุดที่ไม่ได้มีสองขอบ (ปลายเส้นหรือทางแยก)
+        const through = (v, e) => {
+          if (start[v + 1] - start[v] !== 2) return -1;
+          return adj[start[v]] === e ? adj[start[v] + 1] : adj[start[v]];
+        };
+        used.fill(0);
+        const walk = (e, from) => {
+          const coords = [X[from], Y[from]];
+          let v = from;
+          for (;;) {
+            used[e] = 1;
+            v = A[e] === v ? B[e] : A[e];
+            coords.push(X[v], Y[v]);
+            const next = through(v, e);
+            if (next < 0 || used[next]) break;
+            e = next;
+          }
+          lines.push(makeLine(lv, coords));
+        };
+        for (let v = 0; v < N; v++) {
+          for (let i = start[v]; i < start[v + 1]; i++) {
+            const e = adj[i];
+            if (!used[e] && through(v, e) < 0) walk(e, v);
+          }
+        }
+        for (let e = 0; e < E; e++) if (keep(e) && !used[e]) walk(e, A[e]); // วงปิด (เช่น เกาะ)
       }
-      for (let e = 0; e < E; e++) if (level[e] && !used[e]) walk(e, A[e]); // วงปิด
 
       const labels = [
         ...(provinces.features ?? []).map((f) => labelOf(f, "Province", fields.provinceName, fields.provinceArea)),

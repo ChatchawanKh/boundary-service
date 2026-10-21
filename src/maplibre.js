@@ -1,8 +1,8 @@
 // ตัวเชื่อม store → MapLibre GL (ใช้กับ Mapbox GL และ Sphere ที่ครอบ MapLibre ได้ด้วย)
 // ไม่ import maplibre-gl เอง ใช้แค่ instance ของ map ที่ส่งเข้ามา
 
-import { DEFAULT_TERRAIN, VIEW_CAMERA } from "./config.js";
-import { boundaryDataset } from "./sources.js";
+import { DEFAULT_FONT, DEFAULT_GLYPHS, DEFAULT_TERRAIN, VIEW_CAMERA } from "./config.js";
+import { absoluteTemplate, boundaryDataset } from "./sources.js";
 import { describeLayers, sourceId } from "./style.js";
 
 const bindings = new WeakMap(); // map → Map(prefix → binding)
@@ -29,7 +29,9 @@ function diffProps(prev = {}, next = {}, apply) {
  * @param {object} [options]
  * @param {object} [options.dataset]  จาก boundaryDataset() (ไม่ใส่ = boundaryDataset() ค่าเริ่มต้น)
  * @param {string} [options.prefix="admin-boundary"]  prefix ของ id ทุก layer/source
- * @param {string[]} [options.font]  fontstack ที่ glyph server ของ style มีอักษรไทย
+ * @param {string[]} [options.font]  fontstack ของป้าย (ค่าเริ่มต้น ["Kanit Regular"])
+ * @param {string|false} [options.glyphs]  glyph server ของแผนที่ (ค่าเริ่มต้น /boundary-fonts ของ tileMiddleware
+ *   ซึ่งมี Kanit และส่งต่อ fontstack อื่นไป OpenFreeMap) หรือ false = ใช้ glyph ของ style เดิม
  * @param {string} [options.beforeId]  แทรกเส้นไว้ใต้ layer นี้ (ค่าเริ่มต้น = ป้ายแรกของแผนที่ฐาน)
  * @param {boolean} [options.supports3d=true]  false = แสดงแบบ 2d เสมอ
  * @param {object|false} [options.terrain]  raster-dem source สำหรับมุมมอง 3d หรือ false = ไม่ใช้
@@ -44,7 +46,8 @@ export function bindMapLibre(map, store, options = {}) {
   const {
     dataset = defaultDataset(),
     prefix = "admin-boundary",
-    font = ["Noto Sans Regular"],
+    font = DEFAULT_FONT,
+    glyphs = DEFAULT_GLYPHS,
     beforeId,
     supports3d = true,
     terrain = DEFAULT_TERRAIN,
@@ -69,6 +72,8 @@ export function bindMapLibre(map, store, options = {}) {
   let painted = null; // state ที่วาดล่าสุด
   let terrainOn = false;
   let hiddenBasemap = new Map(); // layer id → visibility เดิม
+  let originalGlyphs = null; // glyph URL ของ style ก่อนเปลี่ยน
+  const glyphsUrl = glyphs ? absoluteTemplate(glyphs) : null;
   let resolveReady;
   const ready = new Promise((r) => (resolveReady = r));
 
@@ -128,6 +133,13 @@ export function bindMapLibre(map, store, options = {}) {
     }
 
     hideBasemap();
+    // MapLibre วาดป้ายจาก glyph ของ style เท่านั้น จึงชี้ style ไปที่ server ที่มี Kanit
+    // (setStyle ใหม่จะคืน glyph ของ style นั้น ติดตั้งใหม่จึงตั้งซ้ำ)
+    const styleGlyphs = map.getStyle()?.glyphs;
+    if (glyphsUrl && styleGlyphs !== glyphsUrl && typeof map.setGlyphs === "function") {
+      originalGlyphs = styleGlyphs ?? null;
+      map.setGlyphs(glyphsUrl);
+    }
     const state = store.getState();
     const { below, top } = describeLayers(state, resolved, ctx);
     const before = beforeId && map.getLayer(beforeId) ? beforeId : firstBasemapSymbol();
@@ -206,6 +218,7 @@ export function bindMapLibre(map, store, options = {}) {
       if (registry.get(prefix) === binding) registry.delete(prefix);
       try {
         if (terrainOn) map.setTerrain(null);
+        if (originalGlyphs && map.getStyle()?.glyphs === glyphsUrl) map.setGlyphs(originalGlyphs);
         for (const [id, visibility] of hiddenBasemap) {
           if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
         }

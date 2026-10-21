@@ -82,6 +82,13 @@ export const DEFAULT_LEVEL_STYLES = Object.freeze({
   }),
 });
 
+// ฟอนต์ของป้าย: Kanit (Google Fonts, SIL OFL 1.1) แปลงเป็น glyph .pbf ไว้ใน fonts/ แล้ว
+// tileMiddleware ส่งให้ที่ /boundary-fonts (MapLibre วาดป้ายจาก glyph .pbf เท่านั้น ใช้ฟอนต์เว็บตรงๆ ไม่ได้)
+export const DEFAULT_FONT = Object.freeze(["Kanit Regular"]);
+export const DEFAULT_GLYPHS = "/boundary-fonts/{fontstack}/{range}.pbf";
+// glyph server สำรองสำหรับ fontstack อื่น (เช่น Noto Sans ของ basemap OpenFreeMap)
+export const OPENFREEMAP_GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
+
 // รูปแบบป้ายที่ใช้ร่วมกันทุกระดับ
 export const LABEL_STYLE = Object.freeze({
   haloColor: "#ffffff",

@@ -14,6 +14,13 @@ function absoluteUrl(url) {
   return (base ? new URL(url, base).href : url).replace(/\/$/, "");
 }
 
+/** URL แบบ template ({fontstack}, {range}) → URL เต็ม โดยไม่ encode วงเล็บปีกกา */
+export function absoluteTemplate(template) {
+  const loc = globalThis.location;
+  if (!loc || /^[a-z]+:\/\//i.test(template)) return template;
+  return template.startsWith("/") ? loc.origin + template : new URL(".", loc.href).href + template;
+}
+
 /**
  * @param {object} [options]
  * @param {string} [options.tiles="/boundary-tiles"]  URL ของ tileMiddleware (tile อยู่ที่ {tiles}/{z}/{x}/{y})

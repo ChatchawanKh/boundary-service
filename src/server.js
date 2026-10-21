@@ -9,10 +9,21 @@
 // ใช้:  tileMiddleware() เป็น middleware แบบ connect (req, res, next)
 //       Vite: server.middlewares.use(tileMiddleware())   Express: app.use(tileMiddleware())
 
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
-import { OPENFREEMAP_ADMIN_LEVELS, OPENFREEMAP_CAPITAL_LEVELS, OPENFREEMAP_TILEJSON } from "./config.js";
+import {
+  OPENFREEMAP_ADMIN_LEVELS,
+  OPENFREEMAP_CAPITAL_LEVELS,
+  OPENFREEMAP_GLYPHS,
+  OPENFREEMAP_TILEJSON,
+} from "./config.js";
 import { THAILAND_OUTLINE } from "./thailand.js";
+
+// glyph ที่มากับ package (สร้างด้วย scripts/build-glyphs.mjs) เช่น fonts/Kanit Regular/0-255.pbf
+const FONTS_DIR = fileURLToPath(new URL("../fonts/", import.meta.url));
 
 const MAX_ZOOM = 14; // tile ของ OpenFreeMap มีถึง z14 ซูมเกินนั้น MapLibre ขยายเอง
 const TILEJSON_TTL = 60 * 60 * 1000; // URL ของ tile มีเลขเวอร์ชันที่เปลี่ยนได้
@@ -324,31 +335,97 @@ export function createBoundaryTiles({
 /* middleware                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/* glyph ของป้าย                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * glyph (.pbf) สำหรับป้าย: fontstack ที่มากับ package (เช่น "Kanit Regular") อ่านจากไฟล์
+ * ที่เหลือ (เช่น "Noto Sans Regular" ของ basemap) ส่งต่อไป upstream
+ * @param {object} [options]
+ * @param {string} [options.dir]  โฟลเดอร์ fonts/<fontstack>/<range>.pbf
+ * @param {string} [options.upstream]  glyph server สำรอง มี {fontstack} และ {range}
+ * @param {typeof fetch} [options.fetch]
+ * @returns {(fontstack: string, start: number) => Promise<Uint8Array>}  ไม่มี glyph = Uint8Array ว่าง (protobuf ว่างที่ถูกต้อง)
+ */
+export function createGlyphs({ dir = FONTS_DIR, upstream = OPENFREEMAP_GLYPHS, fetch = globalThis.fetch } = {}) {
+  const bundled = new Set(existsSync(dir) ? readdirSync(dir) : []);
+  const cache = new Map();
+
+  return async (fontstack, start) => {
+    const range = `${start}-${start + 255}`;
+    // fontstack อาจมีหลายชื่อคั่นด้วย , ใช้ตัวแรกที่มากับ package (ชื่อมาจาก readdir จึงไม่มี path แปลกปลอม)
+    const local = fontstack.split(",").map((s) => s.trim()).find((name) => bundled.has(name));
+    if (local) {
+      const file = join(dir, local, `${range}.pbf`);
+      return existsSync(file) ? new Uint8Array(readFileSync(file)) : new Uint8Array(0);
+    }
+
+    const key = `${fontstack}/${range}`;
+    if (cache.has(key)) return cache.get(key);
+    const url = upstream.replace("{fontstack}", encodeURIComponent(fontstack)).replace("{range}", range);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`glyphs HTTP ${res.status}`);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    cache.set(key, buf);
+    if (cache.size > 500) cache.delete(cache.keys().next().value);
+    return buf;
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* middleware                                                                  */
+/* -------------------------------------------------------------------------- */
+
 /**
  * @param {object} [options]
  * @param {string} [options.path="/boundary-tiles"]  tile อยู่ที่ {path}/{z}/{x}/{y}
+ * @param {string} [options.fontsPath="/boundary-fonts"]  glyph อยู่ที่ {fontsPath}/{fontstack}/{start}-{end}.pbf
  * @param {object} [options.boundary]  ส่งต่อให้ createBoundaryTiles()
+ * @param {object} [options.glyphs]  ส่งต่อให้ createGlyphs() เช่น { upstream } ของ glyph server อื่น
  * @param {typeof fetch} [options.fetch]
  * @returns {(req, res, next?) => Promise<void>}
  */
-export function tileMiddleware({ path = "/boundary-tiles", boundary = {}, fetch = globalThis.fetch } = {}) {
+export function tileMiddleware({
+  path = "/boundary-tiles",
+  fontsPath = "/boundary-fonts",
+  boundary = {},
+  glyphs: glyphOptions = {},
+  fetch = globalThis.fetch,
+} = {}) {
   const tiles = createBoundaryTiles({ fetch, ...boundary });
-  const re = new RegExp(`^${path}/(\\d+)/(\\d+)/(\\d+)$`);
+  const glyphs = createGlyphs({ fetch, ...glyphOptions });
+  const tileRe = new RegExp(`^${path}/(\\d+)/(\\d+)/(\\d+)$`);
+  const fontRe = new RegExp(`^${fontsPath}/([^/]+)/(\\d+)-(\\d+)\\.pbf$`);
+
+  const send = (res, status, body, type = "application/x-protobuf") => {
+    const headers = { "Content-Type": type };
+    if (status === 200 || status === 204) headers["Cache-Control"] = CACHE_CONTROL;
+    res.writeHead(status, headers);
+    res.end(body ?? undefined);
+  };
 
   return async (req, res, next) => {
-    const m = re.exec(new URL(req.url, "http://x").pathname);
-    if (!m) {
-      next?.();
-      return;
-    }
+    const pathname = new URL(req.url, "http://x").pathname;
     try {
-      const tile = await tiles(Number(m[1]), Number(m[2]), Number(m[3]));
-      res.writeHead(tile ? 200 : 204, { "Content-Type": "application/x-protobuf", "Cache-Control": CACHE_CONTROL });
-      res.end(tile ? Buffer.from(tile) : undefined);
+      let m = tileRe.exec(pathname);
+      if (m) {
+        const tile = await tiles(Number(m[1]), Number(m[2]), Number(m[3]));
+        send(res, tile ? 200 : 204, tile && Buffer.from(tile));
+        return;
+      }
+      m = fontRe.exec(pathname);
+      if (m) {
+        const start = Number(m[2]);
+        if (start % 256 !== 0 || Number(m[3]) !== start + 255) return send(res, 404, null, "text/plain");
+        send(res, 200, Buffer.from(await glyphs(decodeURIComponent(m[1]), start)));
+        return;
+      }
     } catch (err) {
       console.error(`admin-boundary ${req.url}: ${err.message}`);
-      res.writeHead(502, { "Content-Type": "text/plain" });
-      res.end();
+      send(res, 502, null, "text/plain");
+      return;
     }
+    next?.();
   };
 }

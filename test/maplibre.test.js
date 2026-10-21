@@ -13,12 +13,16 @@ class FakeMap {
     this.terrain = null;
     this.calls = [];
     this.camera = null;
+    this.glyphs = "https://tiles.example/fonts/{fontstack}/{range}.pbf";
   }
   getLayoutProperty(id, k) {
     return this.getLayer(id).layout?.[k];
   }
   getStyle() {
-    return { layers: this.layers };
+    return { layers: this.layers, glyphs: this.glyphs };
+  }
+  setGlyphs(url) {
+    this.glyphs = url;
   }
   getLayer(id) {
     return this.layers.find((l) => l.id === id);
@@ -167,5 +171,24 @@ test("ไม่ส่ง dataset = ใช้ boundaryDataset() ค่าเร�
   await b.ready;
   assert.deepEqual(map.getSource("ab-src-boundary").tiles, ["/boundary-tiles/{z}/{x}/{y}"]);
   assert.ok(map.getLayer("ab-Province-label"));
+  b.destroy();
+});
+
+test("ป้ายใช้ Kanit: ชี้ glyph ของ style ไปที่ /boundary-fonts และคืนค่าเดิมตอน destroy", async () => {
+  const map = new FakeMap();
+  const b = bindMapLibre(map, createBoundaryStore(), { dataset, prefix: "ab" });
+  await b.ready;
+  assert.equal(map.glyphs, "/boundary-fonts/{fontstack}/{range}.pbf");
+  assert.deepEqual(map.getLayer("ab-Province-label").layout["text-font"], ["Kanit Regular"]);
+  b.destroy();
+  assert.equal(map.glyphs, "https://tiles.example/fonts/{fontstack}/{range}.pbf");
+});
+
+test("glyphs: false = ไม่แตะ glyph ของ style (เช่น Sphere)", async () => {
+  const map = new FakeMap();
+  const b = bindMapLibre(map, createBoundaryStore(), { dataset, prefix: "ab", glyphs: false, font: ["noto"] });
+  await b.ready;
+  assert.equal(map.glyphs, "https://tiles.example/fonts/{fontstack}/{range}.pbf");
+  assert.deepEqual(map.getLayer("ab-Province-label").layout["text-font"], ["noto"]);
   b.destroy();
 });

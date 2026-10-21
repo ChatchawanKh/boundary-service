@@ -72,7 +72,7 @@ npm test             # unit test (ไม่ต้องใช้เบราว�
 | --- | --- | --- |
 | `admin-boundary` | เบราว์เซอร์ | `createBoundaryStore`, `bindMapLibre`, `bindLeaflet`, `boundaryDataset`, ค่าตั้งต้น |
 | `admin-boundary/react` | เบราว์เซอร์ | `BoundaryProvider`, `useBoundary`, `useMapLibreBoundary`, `useLeafletBoundary` |
-| `admin-boundary/server` | Node 18+ | `tileMiddleware`, `createBoundaryTiles` |
+| `admin-boundary/server` | Node 18+ | `tileMiddleware`, `createBoundaryTiles`, `createGlyphs` |
 
 ## 3. ติดตั้งในโปรเจกต์
 
@@ -101,12 +101,12 @@ npm i leaflet maplibre-gl @maplibre/maplibre-gl-leaflet    # Leaflet
 
 ## 4. ฝั่ง server: ใส่ tileMiddleware
 
-middleware แบบ connect `(req, res, next)` ตอบ `/boundary-tiles/{z}/{x}/{y}` ที่เหลือส่งต่อ `next()`
+middleware แบบ connect `(req, res, next)` ตอบ 2 path ที่เหลือส่งต่อ `next()`
 
-แต่ละ tile มี 2 layer ที่ server ทำจาก tile ของ OpenFreeMap:
-
-- `boundary`: เส้น `admin_level` 4/6/8 ตัดเฉพาะในไทย
-- `label`: จุดชื่อจังหวัด/อำเภอ (`level`, `name`, `rank`)
+| path | ทำอะไร |
+| --- | --- |
+| `/boundary-tiles/{z}/{x}/{y}` | tile ที่ทำจาก OpenFreeMap มี 2 layer: `boundary` (เส้น `admin_level` 4/6/8 ตัดเฉพาะในไทย) และ `label` (จุดชื่อจังหวัด/อำเภอ: `level`, `name`, `rank`) |
+| `/boundary-fonts/{fontstack}/{range}.pbf` | glyph ของป้าย: `Kanit Regular` จากโฟลเดอร์ `fonts/` ที่มากับ package ส่วน fontstack อื่น (เช่น Noto Sans ของ basemap) ส่งต่อไป OpenFreeMap ดู [ข้อ 7.1](#71-ฟอนต์ของป้าย-kanit) |
 
 **Vite** (ทั้ง `npm run dev` และ `npm run preview`):
 
@@ -142,7 +142,7 @@ app.listen(8080);
 
 tile ที่ตัดแล้ว cache ในหน่วยความจำ 2,000 tile และส่ง `Cache-Control: public, max-age=86400` ให้เบราว์เซอร์/CDN cache ต่อ tile ที่ต้องตัดใช้เวลาครั้งแรกราว 70–200 ms
 
-ใช้ path อื่น: `tileMiddleware({ path: "/api/boundary" })` แล้วส่ง path เดียวกันให้ `boundaryDataset({ tiles: "/api/boundary" })` ฝั่งหน้าเว็บ
+ใช้ path อื่น: `tileMiddleware({ path: "/api/boundary", fontsPath: "/api/fonts" })` แล้วส่ง path เดียวกันให้ฝั่งหน้าเว็บ: `boundaryDataset({ tiles: "/api/boundary" })` และ `bindMapLibre(map, store, { glyphs: "/api/fonts/{fontstack}/{range}.pbf" })`
 
 ## 5. ฝั่งหน้าเว็บ: ผูกกับแผนที่
 
@@ -245,12 +245,13 @@ Sphere ครอบ MapLibre ไว้ ให้ส่ง MapLibre map ข้า
 import { bindMapLibre } from "admin-boundary";
 
 bindMapLibre(resolveNativeMap(sphereMap), store, {
-  font: ["noto"],                  // fontstack ภาษาไทยของ Sphere
+  glyphs: false,                   // ไม่แตะ glyph server ของ Sphere (ป้ายของ Sphere ใช้ fontstack "noto")
+  font: ["noto"],                  // fontstack ภาษาไทยของ Sphere (ไม่มี Kanit)
   lineMetadata: { zIndex: 1000 },  // ให้ชั้นที่ Sphere เพิ่มทีหลังอยู่ใต้เส้นขอบเขต
 });
 ```
 
-ต้องเพิ่ม `tileMiddleware()` ใน proxy-server ของ air_gistda ด้วย (Express: `app.use(tileMiddleware())`) ยังไม่ได้ทดสอบกับ Sphere จริง
+ต้องเพิ่ม `tileMiddleware()` ใน proxy-server ของ air_gistda ด้วย (Express: `app.use(tileMiddleware())`) ถ้าต้องการป้าย Kanit บน Sphere ให้ตั้ง `tileMiddleware({ glyphs: { upstream: "<glyph server ของ Sphere>/{fontstack}/{range}.pbf" } })` แล้วใช้ `glyphs` ค่าเริ่มต้นแทน `false` ยังไม่ได้ทดสอบกับ Sphere จริง
 
 ## 6. ควบคุมชั้นข้อมูลด้วย store
 
@@ -316,6 +317,31 @@ createBoundaryStore({
 
 `dash` เป็นเท่าของความหนาเส้น `[ยาว, เว้น]` ส่วน `opacity` คูณกับความทึบของระดับใน store อีกที
 
+### 7.1 ฟอนต์ของป้าย (Kanit)
+
+ป้ายใช้ฟอนต์ [Kanit](https://fonts.google.com/specimen/Kanit) Regular จาก Google Fonts
+
+MapLibre วาดป้ายจาก glyph แบบ SDF (ไฟล์ `.pbf`) ที่โหลดจาก glyph server ของ style เท่านั้น ใช้ฟอนต์เว็บ (CSS `@font-face`) กับป้ายบนแผนที่ไม่ได้ และ OpenFreeMap มีแต่ Noto Sans จึงทำแบบนี้:
+
+1. แปลง `Kanit-Regular.ttf` เป็น glyph ไว้ใน [`fonts/Kanit Regular/`](fonts/) (725 ตัวอักษร 12 ไฟล์ รวม 313 KB พร้อม `OFL.txt`)
+2. `tileMiddleware` ส่ง glyph ที่ `/boundary-fonts/{fontstack}/{range}.pbf` (fontstack อื่นส่งต่อไป OpenFreeMap)
+3. `bindMapLibre` เปลี่ยน glyph ของ style เป็น URL นั้น (`map.setGlyphs`) แล้วใช้ `font: ["Kanit Regular"]` กับป้าย ป้ายของ basemap ยังเป็น Noto Sans ตามเดิม ตอน `destroy()` คืน glyph เดิมให้
+
+| option ของ `bindMapLibre` | ค่าเริ่มต้น | ความหมาย |
+| --- | --- | --- |
+| `font` | `["Kanit Regular"]` | fontstack ของป้าย |
+| `glyphs` | `"/boundary-fonts/{fontstack}/{range}.pbf"` | glyph server ของแผนที่ หรือ `false` = ใช้ของ style เดิม |
+
+**ข้อจำกัด:** MapLibre ไม่ทำ complex text shaping สระบนและวรรณยุกต์ไทยจึงวางตามตำแหน่งเริ่มต้นในตัวฟอนต์ (เหมือนตอนใช้ Noto) คำที่มีสระบน + วรรณยุกต์ เช่น "ปั้น" อาจซ้อนกันเล็กน้อย
+
+**ใช้ฟอนต์อื่น** (เช่น Kanit Medium หรือ Sarabun): ดาวน์โหลด TTF ที่มีสัญญาอนุญาตให้แจกจ่ายต่อได้ แล้วสร้าง glyph ด้วยสคริปต์ที่มากับ repo
+
+```bash
+npm run build:glyphs -- Kanit-Medium.ttf "Kanit Medium"     # → fonts/Kanit Medium/*.pbf
+```
+
+แล้วใช้ `bindMapLibre(map, store, { font: ["Kanit Medium"] })` สคริปต์สร้าง glyph ขนาด 24 px, buffer 3, รัศมี 8 ตามมาตรฐานของ glyph server ทั่วไป (ตรวจกับ glyph Noto Sans ของ OpenFreeMap แล้ว ตำแหน่งและขนาดตรงกัน)
+
 เปลี่ยนตอนสร้างหรือระหว่างใช้งาน:
 
 ```js
@@ -359,7 +385,8 @@ action: `setLevelVisible`, `toggleLevel`, `setLevelOpacity`, `setLevelLabels`, `
 | --- | --- | --- |
 | `dataset` | `boundaryDataset()` | แหล่ง tile |
 | `hideBasemapLayers` | `[]` | id หรือ predicate ของ layer basemap ที่จะซ่อน (คืนค่าตอน `destroy`) |
-| `font` | `["Noto Sans Regular"]` | fontstack ภาษาไทยบน glyph server ของ style |
+| `font` | `["Kanit Regular"]` | fontstack ของป้าย ดู [ข้อ 7.1](#71-ฟอนต์ของป้าย-kanit) |
+| `glyphs` | `"/boundary-fonts/{fontstack}/{range}.pbf"` | glyph server ของแผนที่ หรือ `false` = ใช้ของ style เดิม |
 | `beforeId` | ป้ายแรกของ basemap | แทรกเส้นไว้ใต้ layer นี้ |
 | `terrain` | Terrarium บน AWS | raster-dem สำหรับ 3D หรือ `false` |
 | `camera` | `true` | เอียง/หมุนกล้องเองเมื่อเปลี่ยนมุมมอง |
@@ -383,7 +410,8 @@ option เหมือน `bindMapLibre` และเพิ่ม `L` (ค่า
 
 | ฟังก์ชัน | ความหมาย |
 | --- | --- |
-| `tileMiddleware({ path?, boundary?, fetch? })` | middleware แบบ connect |
+| `tileMiddleware({ path?, fontsPath?, boundary?, glyphs?, fetch? })` | middleware แบบ connect |
+| `createGlyphs({ dir?, upstream?, fetch? })` | `(fontstack, start) => Promise<Uint8Array>` glyph จากโฟลเดอร์ `fonts/` หรือ upstream |
 | `createBoundaryTiles({ within?, tilejson?, adminLevels?, capitalLevels?, fetch? })` | `(z, x, y) => Promise<Uint8Array \| null>` สำหรับ server ที่ไม่ใช่แบบ connect |
 | `encodeTile(layers, extent?)` | เขียน Mapbox Vector Tile (เส้นและจุด) |
 
@@ -402,7 +430,7 @@ option เหมือน `bindMapLibre` และเพิ่ม `L` (ค่า
 | `/boundary-tiles` ได้ 502 | server ต่อ `tiles.openfreemap.org` ไม่ได้ ดูข้อความใน log ของ server |
 | ตำบลมีแต่เส้น ไม่มีชื่อ | ข้อจำกัดของ OpenFreeMap ดู [REF.md](REF.md#ข้อจำกัดของป้ายชื่อ) |
 | ส่วนใหญ่ไม่มีเส้นตำบล | OpenStreetMap มีเส้นตำบลราว 11% ของทั้งประเทศ ดู [REF.md](REF.md#13-ที่มาของเส้นขอบเขต) |
-| ป้ายเป็นกล่องสี่เหลี่ยม | glyph server ของ style ไม่มีอักษรไทย หรือ `font` ไม่ตรงชื่อ fontstack (OpenFreeMap: `["Noto Sans Regular"]`, Sphere: `["noto"]`) |
+| ป้ายไม่ขึ้นหรือเป็นกล่องสี่เหลี่ยม | ดู `/boundary-fonts/...` ใน DevTools > Network ถ้า 404 = server ยังไม่มี `tileMiddleware` รุ่นที่มี glyph หรือ `font` ไม่ตรงชื่อโฟลเดอร์ใน `fonts/` (Sphere: `glyphs: false, font: ["noto"]`) |
 | เส้นจังหวัดของประเทศเพื่อนบ้านยังขึ้น | เป็นเส้นของ basemap ให้ใส่ `hideBasemapLayers` (Leaflet ที่ใช้ basemap แบบภาพ raster ซ่อนไม่ได้) |
 | ปลายเส้นสั้นๆ ข้ามชายแดนเมื่อซูมลึก | ขอบที่ใช้ตัดขยายออก 1 กม. ดู [REF.md](REF.md#2-ขอบประเทศไทยที่ใช้ตัดเส้น) |
 
@@ -418,10 +446,11 @@ src/
   leaflet.js    bindLeaflet()
   react.js      React bindings
   index.js      export ฝั่งเบราว์เซอร์ (ยกเว้น react)
-  server.js     tileMiddleware(), createBoundaryTiles()  (Node)
+  server.js     tileMiddleware(), createBoundaryTiles(), createGlyphs()  (Node)
   thailand.js   ขอบประเทศไทยแบบย่อ ที่ server ใช้ตัดเส้น
 examples/       หน้าตัวอย่าง
-scripts/        serve.mjs (static server + tileMiddleware สำหรับหน้าตัวอย่าง)
+fonts/          glyph ของป้าย (Kanit Regular) + OFL.txt
+scripts/        serve.mjs (static server + tileMiddleware สำหรับหน้าตัวอย่าง), build-glyphs.mjs (TTF → glyph)
 test/           unit test (node:test)
 REF.md          แหล่งข้อมูล สัญญาอนุญาต และการอ้างอิง
 ```

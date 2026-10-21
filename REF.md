@@ -13,7 +13,7 @@
 | ขอบประเทศไทยที่ใช้ตัดเส้น | Natural Earth 10m ผ่าน `world-atlas` | Public domain | ไม่บังคับ |
 | ภูมิประเทศในมุมมอง 3D | Mapzen Terrain Tiles บน AWS | หลายแหล่ง (ดูด้านล่าง) | ✓ |
 | แผนที่ฐานในตัวอย่าง | OpenFreeMap styles, OpenStreetMap tile server | ODbL / เงื่อนไขการใช้ tile | ✓ |
-| ฟอนต์ป้าย | Noto Sans (glyph ของ OpenFreeMap) | SIL OFL 1.1 | ไม่บังคับ |
+| ฟอนต์ป้าย | Kanit (Google Fonts) แปลงเป็น glyph ใน `fonts/` | SIL OFL 1.1 | ไม่บังคับ (แนบ `OFL.txt` แล้ว) |
 
 ข้อความเครดิตที่แผนที่แสดงอัตโนมัติ (มุมขวาล่าง) มาจาก `ATTRIBUTION` ใน [src/config.js](src/config.js) **อย่าซ่อน attribution control ของแผนที่** ถ้าจำเป็นต้องซ่อน ให้แสดงข้อความเดียวกันที่อื่นบนหน้าเว็บ
 
@@ -194,9 +194,21 @@ library ไม่ได้บังคับแผนที่ฐาน หน�
 
 ## 5. ฟอนต์ป้าย
 
-MapLibre วาดป้ายจาก glyph `.pbf` ของ style หน้าตัวอย่างใช้ `https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf` fontstack `Noto Sans Regular` ซึ่งมีช่วงอักษรไทย (U+0E00–0E7F)
+**ป้ายของ library: Kanit Regular**
 
-Noto Sans: [SIL Open Font License 1.1](https://openfontlicense.org) ไม่ต้องแสดงเครดิตบนแผนที่
+| | |
+| --- | --- |
+| ฟอนต์ | [Kanit](https://fonts.google.com/specimen/Kanit) Regular ออกแบบโดย Cadson Demak ([github.com/cadsondemak/kanit](https://github.com/cadsondemak/kanit)) |
+| ไฟล์ต้นทาง | `https://github.com/google/fonts/raw/main/ofl/kanit/Kanit-Regular.ttf` (รุ่น 2.000) |
+| สัญญาอนุญาต | [SIL Open Font License 1.1](https://openfontlicense.org) แจกจ่ายต่อและดัดแปลงได้ ต้องแนบสัญญาอนุญาต (อยู่ที่ [`fonts/Kanit Regular/OFL.txt`](fonts/Kanit%20Regular/OFL.txt)) ห้ามขายตัวฟอนต์แยกเดี่ยว |
+| การแปลง | [`scripts/build-glyphs.mjs`](scripts/build-glyphs.mjs) อ่านเส้นโครงด้วย [opentype.js](https://github.com/opentypejs/opentype.js) แล้วคำนวณ signed distance field: 24 px, buffer 3, รัศมี 8, cutoff 0.25 ได้ 725 glyph ใน 12 ช่วง (313 KB) |
+| ส่งให้แผนที่ | `tileMiddleware` ที่ `/boundary-fonts/Kanit Regular/{range}.pbf` |
+
+glyph ที่สร้างตรวจเทียบกับ glyph Noto Sans Regular ของ OpenFreeMap โดยสร้างจาก `NotoSans-Regular.ttf` ด้วยสคริปต์เดียวกัน ขนาด ตำแหน่ง baseline และระยะตัวอักษรของ A, H, M, g, j, x, y, . ตรงกันทุกตัว
+
+glyph ที่ได้เป็นงานดัดแปลงจากฟอนต์ ใช้ OFL 1.1 เหมือนต้นฉบับ ชื่อ "Kanit" ไม่ได้เป็น Reserved Font Name จึงใช้ชื่อเดิมได้
+
+**ป้ายของแผนที่ฐาน: Noto Sans** (style ของ OpenFreeMap) `tileMiddleware` ส่งต่อคำขอ glyph ที่ไม่ใช่ Kanit ไปที่ `https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf` Noto Sans ใช้ [SIL OFL 1.1](https://openfontlicense.org) เช่นกัน ไม่ต้องแสดงเครดิตบนแผนที่
 
 ## 6. library ที่ใช้
 
@@ -209,6 +221,7 @@ Noto Sans: [SIL Open Font License 1.1](https://openfontlicense.org) ไม่ต
 | `@maplibre/maplibre-gl-leaflet` (peer) | ซ้อน MapLibre ใน Leaflet | ISC |
 | `react` (peer) | React bindings | MIT |
 | `@maplibre/maplibre-gl-style-spec` (dev) | test: ตรวจ style spec | ISC |
+| `opentype.js` (dev) | `scripts/build-glyphs.mjs`: อ่านไฟล์ฟอนต์ | MIT |
 
 หน้าตัวอย่างโหลด MapLibre GL 5.24.0, Leaflet 1.9.4, maplibre-gl-leaflet 0.1.4 จาก unpkg และ React 18.3.1 (MIT), htm 3.1.1 (Apache-2.0) จาก esm.sh
 

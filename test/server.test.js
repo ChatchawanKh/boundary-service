@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
-import { createBoundaryTiles, encodeTile, tileMiddleware } from "../src/server.js";
+import { decodeGlyphs } from "../scripts/build-glyphs.mjs";
+import { createBoundaryTiles, createGlyphs, encodeTile, tileMiddleware } from "../src/server.js";
 
 // tile 1/1/0 ครอบลองจิจูด 0..180 และละติจูด 0..85 (extent 4096)
 // พื้นที่ที่เก็บ: ลองจิจูด 0..90 = ครึ่งซ้ายของ tile
@@ -136,4 +137,53 @@ test("middleware: upstream พังได้ 502", async () => {
     console.error = log;
   }
   assert.equal(res.status, 502);
+});
+
+test("glyph: Kanit มากับ package มีอักษรไทยครบ ช่วงที่ไม่มีได้ protobuf ว่าง", async () => {
+  const glyphs = createGlyphs({ fetch: () => assert.fail("ไม่ควรออกเน็ต") });
+  const thai = decodeGlyphs(await glyphs("Kanit Regular", 3584));
+  const ids = new Set(thai.map((g) => g.id));
+  for (const ch of "กขคงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮะาำิีึืุู่้๊๋") assert.ok(ids.has(ch.codePointAt(0)), ch);
+  const ko = thai.find((g) => g.id === 0x0e01);
+  assert.ok(ko.width > 0 && ko.advance > 0 && ko.bitmap.length === (ko.width + 6) * (ko.height + 6));
+  // วรรณยุกต์ไม่กินที่ (วางทับตัวหน้า)
+  assert.equal(thai.find((g) => g.id === 0x0e48).advance, 0);
+  assert.equal((await glyphs("Kanit Regular", 4096)).length, 0);
+});
+
+test("glyph: fontstack อื่นส่งต่อ upstream และเก็บ cache", async () => {
+  const calls = [];
+  const glyphs = createGlyphs({
+    upstream: "https://fonts.example/{fontstack}/{range}.pbf",
+    fetch: async (url) => {
+      calls.push(url);
+      return { ok: true, status: 200, arrayBuffer: async () => new Uint8Array([7]).buffer };
+    },
+  });
+  assert.deepEqual([...(await glyphs("Noto Sans Regular", 0))], [7]);
+  await glyphs("Noto Sans Regular", 0);
+  assert.deepEqual(calls, ["https://fonts.example/Noto%20Sans%20Regular/0-255.pbf"]);
+});
+
+test("middleware: /boundary-fonts ตอบ glyph และกันช่วง/ชื่อที่ไม่ถูกต้อง", async () => {
+  const handle = tileMiddleware({ fetch: async () => ({ ok: false, status: 404 }) });
+  const ok = fakeRes();
+  await handle({ url: "/boundary-fonts/Kanit%20Regular/3584-3839.pbf" }, ok);
+  assert.equal(ok.status, 200);
+  assert.ok(decodeGlyphs(new Uint8Array(ok.body)).length > 80);
+
+  const badRange = fakeRes();
+  await handle({ url: "/boundary-fonts/Kanit%20Regular/3584-3900.pbf" }, badRange);
+  assert.equal(badRange.status, 404);
+
+  // ชื่อที่ไม่ได้มากับ package ไม่อ่านไฟล์ในเครื่อง ส่งต่อ upstream แทน (ที่นี่ upstream ตอบ 404 → 502)
+  const traversal = fakeRes();
+  const log = console.error;
+  console.error = () => {};
+  try {
+    await handle({ url: "/boundary-fonts/..%2F..%2Fpackage.json/0-255.pbf" }, traversal);
+  } finally {
+    console.error = log;
+  }
+  assert.equal(traversal.status, 502);
 });

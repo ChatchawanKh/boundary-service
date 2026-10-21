@@ -80,7 +80,7 @@ function LevelRow({ level }) {
   return html`<div class="ab-level">
     <label class="ab-check">
       <input type="checkbox" checked=${lv.visible} onChange=${(e) => store.setLevelVisible(level, e.target.checked)} />
-      <span class="ab-swatch" style=${{ "--c": st.color, "--s": st.dash ? "dashed" : "solid" }}></span>
+      <span class="ab-swatch" style=${{ "--c": st.color, "--bg": st.casingColor, "--s": st.dash ? "dashed" : "solid" }}></span>
       ${LEVEL_NAMES_TH[level]}
     </label>
     <label class="ab-check ab-mini">

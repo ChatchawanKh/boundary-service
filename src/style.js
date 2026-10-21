@@ -1,7 +1,7 @@
 // แปลง state ของ store เป็นรายการ layer ตาม MapLibre style spec (ฟังก์ชันล้วน ไม่แตะแผนที่)
 // ตัวเชื่อมแผนที่เรียก describeLayers() ทุกครั้งที่ state เปลี่ยน แล้วอัปเดตเฉพาะค่าที่ต่างจากเดิม
 
-import { LEVELS, META_KEY } from "./config.js";
+import { LABEL_STYLE, LEVELS, META_KEY } from "./config.js";
 
 export function layerIds(prefix, level) {
   return {
@@ -20,6 +20,13 @@ export function zoomRamp(stops, add = 0) {
   if (typeof stops === "number") return stops + add;
   if (stops.length === 1) return stops[0][1] + add;
   return ["interpolate", ["linear"], ["zoom"], ...stops.flatMap(([z, v]) => [z, v + add])];
+}
+
+/** ค่าคงที่หรือ [[zoom, value], ...] → คูณ factor ทุกค่าแล้วแปลงเป็น expression ตามซูม */
+export function scaleRamp(value, factor = 1) {
+  if (value == null) return factor;
+  if (typeof value === "number") return value * factor;
+  return zoomRamp(value.map(([z, v]) => [z, v * factor]));
 }
 
 function withSourceLayer(layer, ref) {
@@ -85,8 +92,9 @@ export function describeLayers(state, resolved, ctx) {
           layout: { visibility, "line-join": "round", "line-cap": "round" },
           paint: {
             "line-color": st.casingColor,
-            "line-width": zoomRamp(st.width, st.casingWidth),
-            "line-opacity": 0.7 * op,
+            "line-width": zoomRamp(st.casingWidth),
+            // opacity ตามซูมคูณที่ค่าของแต่ละ stop (MapLibre ไม่ยอมให้ห่อ ["zoom"] ไว้ใต้ ["*", ...])
+            "line-opacity": scaleRamp(st.casingOpacity, op),
           },
         },
         refs.line,
@@ -96,7 +104,7 @@ export function describeLayers(state, resolved, ctx) {
     const linePaint = {
       "line-color": st.color,
       "line-width": zoomRamp(st.width),
-      "line-opacity": op,
+      "line-opacity": scaleRamp(st.opacity, op),
     };
     if (st.dash) linePaint["line-dasharray"] = st.dash;
     lines.unshift(
@@ -120,8 +128,8 @@ export function describeLayers(state, resolved, ctx) {
         "text-field": ["to-string", ["get", refs.label.name]],
         "text-font": ctx.font,
         "text-size": zoomRamp(st.labelSize),
-        "text-max-width": 7,
-        "text-padding": 3,
+        "text-max-width": LABEL_STYLE.maxWidth,
+        "text-padding": LABEL_STYLE.padding,
         "text-pitch-alignment": "viewport",
         "text-rotation-alignment": "viewport",
       };
@@ -139,8 +147,9 @@ export function describeLayers(state, resolved, ctx) {
             layout,
             paint: {
               "text-color": st.labelColor ?? st.color,
-              "text-halo-color": "#ffffff",
-              "text-halo-width": 1.5,
+              "text-halo-color": LABEL_STYLE.haloColor,
+              "text-halo-width": LABEL_STYLE.haloWidth,
+              "text-halo-blur": LABEL_STYLE.haloBlur,
               "text-opacity": op,
             },
           },

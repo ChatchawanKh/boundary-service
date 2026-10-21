@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createBoundaryStore } from "../src/store.js";
-import { describeLayers, zoomRamp } from "../src/style.js";
+import { describeLayers, scaleRamp, zoomRamp } from "../src/style.js";
 import { testDataset } from "./helpers.js";
 
 const ctx = { prefix: "ab", font: ["Noto Sans Regular"], supports3d: true, terrain: true };
@@ -10,6 +10,24 @@ const resolved = await testDataset().load();
 test("zoomRamp บวกค่าเพิ่มทุก stop", () => {
   assert.deepEqual(zoomRamp([[4, 1], [8, 2]], 1), ["interpolate", ["linear"], ["zoom"], 4, 2, 8, 3]);
   assert.equal(zoomRamp([[4, 1]]), 1);
+});
+
+test("scaleRamp คูณทุก stop (ใช้กับ opacity ตามซูม × opacity ของระดับ)", () => {
+  assert.deepEqual(scaleRamp([[4, 0.4], [8, 1]], 0.5), ["interpolate", ["linear"], ["zoom"], 4, 0.2, 8, 0.5]);
+  assert.equal(scaleRamp(0.6, 0.5), 0.3);
+  assert.equal(scaleRamp(undefined, 0.5), 0.5);
+});
+
+test("ค่าตั้งต้นตามเกณฑ์: เส้นสะสม ป้ายทีละระดับไม่ทับช่วงกัน", () => {
+  const { below, top } = describeLayers(createBoundaryStore().getState(), resolved, ctx);
+  const line = (lv) => below.find((l) => l.id === `ab-${lv}-line`);
+  assert.deepEqual([line("Province").minzoom, line("Amphoe").minzoom, line("Tambon").minzoom], [4, 8, 13]);
+  const label = (lv) => top.find((l) => l.id === `ab-${lv}-label`);
+  assert.deepEqual([label("Province").minzoom, label("Province").maxzoom], [1, 10]);
+  assert.deepEqual([label("Amphoe").minzoom, label("Amphoe").maxzoom], [10, 13]);
+  assert.equal(label("Tambon").minzoom, 13);
+  // เส้นจังหวัดจางตอนซูมไกล ชัดเต็มที่ z8
+  assert.deepEqual(line("Province").paint["line-opacity"], ["interpolate", ["linear"], ["zoom"], 4, 0.45, 8, 1]);
 });
 
 test("describeLayers: ลำดับชั้นและ id", () => {

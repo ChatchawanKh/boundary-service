@@ -4,6 +4,6 @@
 export * from "./config.js";
 export { createBoundaryStore } from "./store.js";
 export { boundaryDataset } from "./sources.js";
-export { describeLayers, layerIds, sourceId, zoomRamp } from "./style.js";
+export { describeLayers, layerIds, scaleRamp, sourceId, zoomRamp } from "./style.js";
 export { bindMapLibre } from "./maplibre.js";
 export { bindLeaflet } from "./leaflet.js";

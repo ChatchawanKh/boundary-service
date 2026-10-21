@@ -17,49 +17,78 @@ export const THAILAND_BOUNDS = Object.freeze([97.3, 5.6, 105.7, 20.5]);
 // key ใน metadata ของทุก layer ที่ library สร้าง ให้โค้ดภายนอกแยกออกได้
 export const META_KEY = "admin-boundary";
 
-// โทนขาวดำ ไล่น้ำหนักตามระดับ: จังหวัด ดำ ทึบ หนา → อำเภอ เทาเข้ม ประยาว → ตำบล เทา ประสั้น บาง
-// ทุกระดับมีเส้นขาวรองใต้ (casing) ให้อ่านออกบนพื้นแผนที่ทุกสี
+// เกณฑ์การแสดงผลเดียวกับ air_gistda (src/lib/adminBoundary.js) ในโทนขาวดำ
 //
-// width, labelSize: [[zoom, px], ...] สอดแทรกเชิงเส้นตามซูม
-// dash: [ยาว, เว้น] เป็นเท่าของความหนาเส้น หรือ null = เส้นทึบ
-// labelMaxzoom ไม่รวมขอบ (ป้ายหายตั้งแต่ซูมนั้น)
+//   ซูม     เส้น (สะสม)              ป้าย (ทีละระดับ)
+//   1–3     –                        จังหวัด
+//   4–7     จังหวัด                   จังหวัด
+//   8–9     จังหวัด + อำเภอ            จังหวัด
+//   10–12   จังหวัด + อำเภอ            อำเภอ
+//   13+     จังหวัด + อำเภอ + ตำบล      ตำบล
+//
+// ค่าที่เป็น [[zoom, ค่า], ...] สอดแทรกเชิงเส้นตามซูม ใส่ตัวเลขเดียวก็ได้
+//   width, casingWidth  ความหนา (px) ของเส้นหลักและเส้นรองพื้น
+//   opacity, casingOpacity  ความทึบ 0–1 (คูณกับ opacity ของระดับใน store อีกที)
+//   dash  [ยาว, เว้น] เป็นเท่าของความหนาเส้น หรือ null = เส้นทึบ
+//   labelMaxzoom ไม่รวมขอบ (ป้ายหายตั้งแต่ซูมนั้น)
+
+const mmToPx = (mm) => (mm * 96) / 25.4;
+const TAMBON_WIDTH = mmToPx(0.25); // ≈ 0.94 px
+
 export const DEFAULT_LEVEL_STYLES = Object.freeze({
   Province: Object.freeze({
     color: "#1a1a1a",
-    width: [[5, 1.2], [8, 2], [12, 3]],
+    width: [[4, 0.5], [8, 1.2], [12, 2], [16, 2.6]],
+    // ซูมไกลเส้นจังหวัดถี่มาก จางไว้ก่อน ชัดเต็มที่ z8
+    opacity: [[4, 0.45], [8, 1]],
     casingColor: "#ffffff",
-    casingWidth: 2,
+    casingWidth: [[4, 1.2], [8, 2.8], [12, 4], [16, 5]],
+    casingOpacity: [[4, 0.3], [8, 0.6]],
     dash: null,
-    minzoom: 5, // tile ของ OpenMapTiles ซูมต่ำกว่านี้มีเส้นระดับจังหวัดไม่ครบ
-    labelMinzoom: 5,
-    labelMaxzoom: 9,
-    labelSize: [[5, 11], [8, 15]],
-    labelColor: "#1a1a1a",
+    minzoom: 4, // z4 ยังเป็นเส้นของ Natural Earth (หยาบ) OSM เริ่มที่ z5 ดู REF.md 1.3
+    labelMinzoom: 1,
+    labelMaxzoom: 10,
+    labelSize: 16,
+    labelColor: "#383838",
   }),
   Amphoe: Object.freeze({
     color: "#4d4d4d",
-    width: [[7, 0.8], [10, 1.4], [14, 2]],
+    width: [[8, 0.8], [14, 1.6]],
+    opacity: 1,
     casingColor: "#ffffff",
-    casingWidth: 1.5,
-    dash: [5, 2.5],
-    minzoom: 7,
-    labelMinzoom: 9,
-    labelMaxzoom: 12,
-    labelSize: [[9, 11], [11, 14]],
-    labelColor: "#333333",
+    casingWidth: [[8, 1.6], [14, 3]],
+    casingOpacity: 0.35,
+    dash: [3, 2],
+    minzoom: 8, // ข้อมูลระดับ 6 ใน OpenMapTiles เริ่มมีที่ z9
+    labelMinzoom: 10,
+    labelMaxzoom: 13,
+    labelSize: 16,
+    labelColor: "#383838",
   }),
   Tambon: Object.freeze({
-    color: "#808080",
-    width: [[10, 0.6], [13, 1], [16, 1.6]],
-    casingColor: "#ffffff",
-    casingWidth: 1,
-    dash: [2, 2],
-    minzoom: 10,
-    labelMinzoom: 12,
+    // เส้นประขาวบนเส้นรองเทาเข้ม อ่านออกทั้งบนแผนที่ถนนและภาพดาวเทียม
+    color: "#ffffff",
+    width: TAMBON_WIDTH,
+    opacity: 1,
+    casingColor: "#383838",
+    casingWidth: 2.2,
+    casingOpacity: 0.55,
+    dash: [4 / TAMBON_WIDTH, 3 / TAMBON_WIDTH], // ขีด 4 px เว้น 3 px
+    minzoom: 13,
+    labelMinzoom: 13,
     labelMaxzoom: 24,
-    labelSize: [[12, 11], [15, 13]],
-    labelColor: "#595959",
+    labelSize: 16,
+    labelColor: "#383838",
   }),
+});
+
+// รูปแบบป้ายที่ใช้ร่วมกันทุกระดับ
+export const LABEL_STYLE = Object.freeze({
+  haloColor: "#ffffff",
+  haloWidth: 2,
+  haloBlur: 1,
+  padding: 6, // ระยะห่างขั้นต่ำระหว่างป้าย (px)
+  maxWidth: 100, // em: กว้างพอที่จะไม่ตัดบรรทัด
 });
 
 // เส้นขอบเขต: layer "boundary" ของ OpenFreeMap (OpenMapTiles schema)

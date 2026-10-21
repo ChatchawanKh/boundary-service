@@ -32,7 +32,7 @@ export function mountPanel(el, { store, supports3d = true, sdk = "", basemaps, o
         <div class="ab-level" data-level="${level}">
           <label class="ab-check">
             <input type="checkbox" data-role="visible">
-            <span class="ab-swatch" style="--c:${styles[level].color};--s:${styles[level].dash ? "dashed" : "solid"}"></span>
+            <span class="ab-swatch" style="--c:${styles[level].color};--bg:${styles[level].casingColor};--s:${styles[level].dash ? "dashed" : "solid"}"></span>
             ${LEVEL_NAMES_TH[level]}
           </label>
           <label class="ab-check ab-mini"><input type="checkbox" data-role="labels"> ป้าย</label>

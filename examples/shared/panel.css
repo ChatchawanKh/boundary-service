@@ -134,14 +134,14 @@ body {
   font-size: 12px;
   color: var(--ab-muted);
 }
-/* ตัวอย่างเส้นบนพื้นสว่าง (เส้นดำ/เทามองไม่เห็นบนแผงสีเข้ม) */
+/* ตัวอย่างเส้นบนพื้นสีเส้นรอง (--bg) เหมือนบนแผนที่ */
 .ab-swatch {
   position: relative;
   flex: none;
   width: 24px;
   height: 12px;
   border-radius: 3px;
-  background: #f2f2f2;
+  background: var(--bg, #f2f2f2);
 }
 .ab-swatch::after {
   content: "";

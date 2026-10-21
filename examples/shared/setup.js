@@ -2,7 +2,7 @@
 
 import { boundaryDataset } from "../../src/index.js";
 
-// เส้นและป้ายจาก OpenFreeMap ผ่าน tileMiddleware ใน scripts/serve.mjs (ตัดเฉพาะในไทยแล้ว)
+// เส้นและป้ายจากข้อมูล GISTDA (กรมการปกครอง) ผ่าน tileMiddleware ใน scripts/serve.mjs
 export const dataset = boundaryDataset({ tiles: "/boundary-tiles" });
 
 export const BASEMAPS = {
@@ -11,7 +11,7 @@ export const BASEMAPS = {
   dark: "https://tiles.openfreemap.org/styles/dark",
 };
 
-// เส้นเขตปกครองที่ style ของ OpenFreeMap มีอยู่แล้ว ซ่อนไว้ไม่ให้ซ้อนกับชั้นของเรา
+// แผนที่ฐานในหน้าตัวอย่างเป็นของ OpenFreeMap ซึ่งมีเส้นเขตปกครองของ OSM อยู่แล้ว ซ่อนไว้ไม่ให้ซ้อนกับชั้นของเรา
 export const BASEMAP_BOUNDARY_LAYERS = ["boundary_3", "boundary_state"];
 
 export const THAILAND_VIEW = { center: [100.9, 13.0], zoom: 5 };

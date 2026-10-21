@@ -1,12 +1,11 @@
-// ฝั่ง server (Node 18+): ทำ tile ขอบเขตการปกครองเฉพาะประเทศไทยจาก OpenFreeMap
+// ฝั่ง server (Node 18+): ทำ tile ขอบเขตการปกครองของไทยจากข้อมูล GISTDA (กรมการปกครอง)
 //
-//   /boundary-tiles/{z}/{x}/{y}   layer "boundary"  เส้น admin_level 4/6 ตัดให้เหลือเฉพาะในไทย
-//                                                     + เส้นตำบล (8) จาก GISTDA ตั้งแต่ซูม 13 (src/tambon.js)
-//                                 layer "label"     จุดชื่อจังหวัด/อำเภอ จากที่ตั้งศาลากลาง/ตัวอำเภอ (place.capital)
-//                                                     + ชื่อตำบลจาก GISTDA
+//   /boundary-tiles/{z}/{x}/{y}            layer "boundary"  เส้น admin_level 4/6/8 = จังหวัด/อำเภอ/ตำบล
+//                                          layer "label"     จุดชื่อ field level = Province | Amphoe | Tambon
+//   /boundary-fonts/{fontstack}/{range}.pbf glyph ของป้าย (Kanit จาก fonts/ ที่เหลือส่งต่อ upstream)
 //
-// ทำไมต้องทำที่ server: เส้นระดับ 4/6/8 ของ OpenMapTiles ไม่มี field ประเทศ และทุกเส้นใน tile ถูกรวมเป็น
-// feature เดียว filter ฝั่ง MapLibre จึงแยกเส้นไทยออกจากเส้นประเทศเพื่อนบ้านไม่ได้
+// ข้อมูลโหลดจาก ArcGIS MapServer ของ GISTDA ครั้งเดียว (มี cache บนดิสก์) แล้วตัด tile จากหน่วยความจำ
+// วิธีสร้างเส้นและป้ายอยู่ใน src/gistda.js
 //
 // ใช้:  tileMiddleware() เป็น middleware แบบ connect (req, res, next)
 //       Vite: server.middlewares.use(tileMiddleware())   Express: app.use(tileMiddleware())
@@ -14,128 +13,17 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
-import {
-  GISTDA_TAMBON_SERVICE,
-  OPENFREEMAP_ADMIN_LEVELS,
-  OPENFREEMAP_CAPITAL_LEVELS,
-  OPENFREEMAP_GLYPHS,
-  OPENFREEMAP_TILEJSON,
-} from "./config.js";
-import { createTambonSource } from "./tambon.js";
-import { THAILAND_OUTLINE } from "./thailand.js";
+import { OPENFREEMAP_GLYPHS } from "./config.js";
+import { buildAdminIndexAsync, createTileBuilder, loadAdminData } from "./gistda.js";
 
 // glyph ที่มากับ package (สร้างด้วย scripts/build-glyphs.mjs) เช่น fonts/Kanit Regular/0-255.pbf
 const FONTS_DIR = fileURLToPath(new URL("../fonts/", import.meta.url));
 
-const MAX_ZOOM = 14; // tile ของ OpenFreeMap มีถึง z14 ซูมเกินนั้น MapLibre ขยายเอง
-const TILEJSON_TTL = 60 * 60 * 1000; // URL ของ tile มีเลขเวอร์ชันที่เปลี่ยนได้
+const MAX_ZOOM = 14; // source ฝั่งหน้าเว็บมีถึง z14 ซูมเกินนั้น MapLibre ขยายเอง
 const CACHE_SIZE = 2000;
 const CACHE_CONTROL = "public, max-age=86400";
-
-// ชื่อใน OSM บางจุดเป็นชื่อเทศบาล เช่น "เทศบาลตำบลปาย" → "ปาย"
-const NAME_PREFIX = /^(เทศบาลนคร|เทศบาลเมือง|เทศบาลตำบล|อำเภอ|จังหวัด)\s*/;
-
-/* -------------------------------------------------------------------------- */
-/* ตัดด้วย polygon                                                            */
-/* -------------------------------------------------------------------------- */
-
-// lng/lat → พิกัด Web Mercator 0..1
-const mercX = (lng) => (lng + 180) / 360;
-const mercY = (lat) => {
-  const r = (lat * Math.PI) / 180;
-  return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2;
-};
-
-function toEdges(geometry) {
-  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
-  const edges = [];
-  for (const rings of polygons) {
-    for (const ring of rings) {
-      for (let i = 1; i < ring.length; i++) {
-        edges.push([mercX(ring[i - 1][0]), mercY(ring[i - 1][1]), mercX(ring[i][0]), mercY(ring[i][1])]);
-      }
-    }
-  }
-  return edges;
-}
-
-/**
- * ตัวตัดของ tile หนึ่ง: แปลงขอบ polygon เป็นพิกัดของ tile แล้วเก็บเฉพาะขอบที่เกี่ยว
- * @returns {{ mode: "all"|"none"|"clip", inside: (x, y) => boolean, clip: (line) => number[][][] }}
- */
-function tileClipper(edges, z, x, y, extent) {
-  const n = 2 ** z;
-  const min = -extent * 0.25; // geometry ของ tile ล้นขอบได้ (buffer)
-  const max = extent * 1.25;
-  const local = [];
-  for (const [ax, ay, bx, by] of edges) {
-    const e = [(ax * n - x) * extent, (ay * n - y) * extent, (bx * n - x) * extent, (by * n - y) * extent];
-    // เก็บขอบที่รังสีแนวนอน (ไปทาง +x) จากจุดใน tile อาจตัดผ่าน
-    if (Math.max(e[1], e[3]) < min || Math.min(e[1], e[3]) > max || Math.max(e[0], e[2]) < min) continue;
-    local.push(e);
-  }
-
-  const inside = (px, py) => {
-    let c = false;
-    for (const [ax, ay, bx, by] of local) {
-      if (ay > py !== by > py && px < ((bx - ax) * (py - ay)) / (by - ay) + ax) c = !c;
-    }
-    return c;
-  };
-
-  const crossing = local.filter(
-    ([ax, ay, bx, by]) => Math.max(ax, bx) >= min && Math.min(ax, bx) <= max && Math.max(ay, by) >= min && Math.min(ay, by) <= max,
-  );
-
-  // ค่า t (0..1) บนเส้น p→q ที่ตัดขอบประเทศ เรียงจากใกล้ไปไกล
-  const hits = (p, q) => {
-    const ts = [];
-    const dx = q.x - p.x;
-    const dy = q.y - p.y;
-    for (const [ax, ay, bx, by] of crossing) {
-      if (Math.max(ax, bx) < Math.min(p.x, q.x) || Math.min(ax, bx) > Math.max(p.x, q.x)) continue;
-      if (Math.max(ay, by) < Math.min(p.y, q.y) || Math.min(ay, by) > Math.max(p.y, q.y)) continue;
-      const ex = bx - ax;
-      const ey = by - ay;
-      const den = dx * ey - dy * ex;
-      if (den === 0) continue;
-      const t = ((ax - p.x) * ey - (ay - p.y) * ex) / den;
-      const u = ((ax - p.x) * dy - (ay - p.y) * dx) / den;
-      if (t > 0 && t <= 1 && u >= 0 && u < 1) ts.push(t);
-    }
-    return ts.sort((a, b) => a - b);
-  };
-
-  const clip = (line) => {
-    const parts = [];
-    let state = inside(line[0].x, line[0].y);
-    let cur = state ? [[line[0].x, line[0].y]] : null;
-    for (let i = 1; i < line.length; i++) {
-      const p = line[i - 1];
-      const q = line[i];
-      for (const t of hits(p, q)) {
-        const point = [p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t];
-        if (state) {
-          cur.push(point);
-          parts.push(cur);
-          cur = null;
-        } else {
-          cur = [point];
-        }
-        state = !state;
-      }
-      if (state) cur.push([q.x, q.y]);
-    }
-    if (cur) parts.push(cur);
-    return parts;
-  };
-
-  // ไม่มีขอบประเทศผ่าน tile นี้ = ทั้ง tile อยู่ในหรืออยู่นอกประเทศ
-  const mode = crossing.length ? "clip" : inside(extent / 2, extent / 2) ? "all" : "none";
-  return { mode, inside, clip };
-}
+const RETRY_AFTER = 60 * 1000; // โหลดข้อมูลไม่สำเร็จ รอเท่านี้ก่อนลองใหม่
 
 /* -------------------------------------------------------------------------- */
 /* เขียน Mapbox Vector Tile (เส้นและจุด)                                      */
@@ -193,19 +81,22 @@ export function encodeTile(layers, extent = 4096) {
   let any = false;
 
   for (const layer of layers) {
-    const keys = [];
-    const values = [];
-    const valueKey = (v) => `${typeof v}:${v}`;
+    const keys = new Map();
+    const values = new Map(); // `${typeof}:${value}` → index
+    const valueList = [];
     const encoded = [];
     for (const f of layer.features) {
       const geometry = encodeGeometry(f.type, f.geometry);
       if (!geometry.length) continue;
       const tags = [];
       for (const [k, v] of Object.entries(f.properties)) {
-        if (!keys.includes(k)) keys.push(k);
-        let vi = values.findIndex((x) => valueKey(x) === valueKey(v));
-        if (vi < 0) vi = values.push(v) - 1;
-        tags.push(keys.indexOf(k), vi);
+        if (!keys.has(k)) keys.set(k, keys.size);
+        const vk = `${typeof v}:${v}`;
+        if (!values.has(vk)) {
+          values.set(vk, valueList.length);
+          valueList.push(v);
+        }
+        tags.push(keys.get(k), values.get(vk));
       }
       encoded.push({ tags, type: f.type === "point" ? 1 : 2, geometry });
     }
@@ -222,8 +113,8 @@ export function encodeTile(layers, extent = 4096) {
           q.writePackedVarint(4, f.geometry);
         });
       }
-      for (const k of keys) p.writeStringField(3, k);
-      for (const v of values) {
+      for (const k of keys.keys()) p.writeStringField(3, k);
+      for (const v of valueList) {
         p.writeMessage(4, (__, q) => (typeof v === "string" ? q.writeStringField(1, v) : q.writeVarintField(5, v)));
       }
       p.writeVarintField(5, extent);
@@ -237,134 +128,53 @@ export function encodeTile(layers, extent = 4096) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * @param {object} [options]
- * @param {object} [options.within]  Polygon/MultiPolygon ที่จะเก็บไว้ (ค่าเริ่มต้น ขอบประเทศไทยขยาย 1 กม.)
- * @param {string} [options.tilejson]  TileJSON ของ OpenMapTiles
- * @param {number[]} [options.adminLevels]  admin_level ของเส้นที่เก็บ
- * @param {Record<number, string>} [options.capitalLevels]  place.capital → ระดับของป้าย (false = ไม่ทำป้าย)
- * @param {object|false} [options.tambon]  service ตำบลของ GISTDA { url, minzoom, name, area } ใช้แทนเส้นตำบลของ OSM
- *   และเพิ่มป้ายชื่อตำบล หรือ false = ใช้เส้นตำบลของ OSM (ไม่มีป้าย)
+ * @param {object} [options]  ส่งต่อให้ loadAdminData(): { service, cacheDir, maxAge, concurrency }
+ * @param {Function} [options.load]  แทนตัวโหลดข้อมูล (ใช้ใน test) คืน { provinces, amphoes, tambons }
+ * @param {object} [options.minzoom]  ซูมต่ำสุดที่ใส่แต่ละระดับลงใน tile (ค่าเริ่มต้น SERVER_MINZOOM)
  * @param {typeof fetch} [options.fetch]
- * @returns {(z: number, x: number, y: number) => Promise<Uint8Array|null>}  null = tile ว่าง
+ * @returns {((z: number, x: number, y: number) => Promise<Uint8Array|null>) & { ready: () => Promise<object> }}
+ *   null = tile ว่าง · ready() รอโหลดและสร้างเครือข่ายเส้นเสร็จ คืนสถิติ
  */
-export function createBoundaryTiles({
-  within = THAILAND_OUTLINE,
-  tilejson = OPENFREEMAP_TILEJSON,
-  adminLevels = Object.values(OPENFREEMAP_ADMIN_LEVELS),
-  capitalLevels = OPENFREEMAP_CAPITAL_LEVELS,
-  tambon = GISTDA_TAMBON_SERVICE,
-  fetch = globalThis.fetch,
-} = {}) {
-  const edges = toEdges(within);
+export function createBoundaryTiles({ load, minzoom, fetch = globalThis.fetch, ...loadOptions } = {}) {
   const cache = new Map();
-  const tambonSource = tambon ? createTambonSource(tambon, fetch) : null;
-  const tambonLevel = OPENFREEMAP_ADMIN_LEVELS.Tambon;
-  let template = null;
-  let templateAt = 0;
+  let building = null;
+  let failedAt = 0;
 
-  async function tileUrl(z, x, y) {
-    if (!template || Date.now() - templateAt > TILEJSON_TTL) {
-      const res = await fetch(tilejson);
-      if (!res.ok) throw new Error(`TileJSON HTTP ${res.status}`);
-      template = (await res.json()).tiles[0];
-      templateAt = Date.now();
+  // โหลดครั้งแรกที่มีคนขอ tile (หรือเรียก ready()) ถ้าพังให้ลองใหม่หลัง RETRY_AFTER
+  const ready = () => {
+    if (!building && Date.now() - failedAt > RETRY_AFTER) {
+      const started = Date.now();
+      building = (load ? load() : loadAdminData({ fetch, ...loadOptions }))
+        .then(async (data) => {
+          const index = await buildAdminIndexAsync(data, loadOptions.service?.fields);
+          return { tile: createTileBuilder(index, minzoom), stats: { ...index.stats, ms: Date.now() - started } };
+        })
+        .catch((err) => {
+          building = null;
+          failedAt = Date.now();
+          throw err;
+        });
     }
-    return template.replace("{z}", z).replace("{x}", x).replace("{y}", y);
-  }
+    return building ?? Promise.reject(new Error("admin-boundary: โหลดข้อมูลไม่สำเร็จ รอลองใหม่"));
+  };
 
-  function boundaryFeatures(layer, clipper) {
-    // รวมเส้นตาม admin_level เหมือน OpenMapTiles
-    const byLevel = new Map();
-    for (let i = 0; i < layer.length; i++) {
-      const f = layer.feature(i);
-      const { admin_level: level, maritime, disputed } = f.properties;
-      if (!adminLevels.includes(level) || maritime === 1 || disputed === 1) continue;
-      if (tambonSource && level === tambonLevel) continue; // ใช้เส้นตำบลของ GISTDA แทน
-      const lines = byLevel.get(level) ?? [];
-      for (const line of f.loadGeometry()) {
-        if (clipper.mode === "all") lines.push(line.map((p) => [p.x, p.y]));
-        else lines.push(...clipper.clip(line));
-      }
-      byLevel.set(level, lines);
-    }
-    return [...byLevel].map(([level, lines]) => ({
-      type: "line",
-      properties: { admin_level: level, maritime: 0, disputed: 0 },
-      geometry: lines,
-    }));
-  }
-
-  function labelFeatures(layer, clipper) {
-    const features = [];
-    for (let i = 0; i < layer.length; i++) {
-      const f = layer.feature(i);
-      const p = f.properties;
-      const level = capitalLevels[p.capital];
-      if (!level) continue;
-      const name = String(p["name:th"] ?? p.name ?? "").replace(NAME_PREFIX, "").trim();
-      if (!name) continue;
-      const points = f
-        .loadGeometry()
-        .flat()
-        .filter((pt) => clipper.mode === "all" || clipper.inside(pt.x, pt.y))
-        .map((pt) => [pt.x, pt.y]);
-      if (!points.length) continue;
-      features.push({ type: "point", properties: { level, name, rank: p.rank ?? 99 }, geometry: points });
-    }
-    return features;
-  }
-
-  async function build(z, x, y) {
-    if (z > MAX_ZOOM) return { tile: null, cacheable: true };
-    const res = await fetch(await tileUrl(z, x, y));
-    if (res.status === 204 || res.status === 404) return { tile: null, cacheable: true };
-    if (!res.ok) throw new Error(`OpenFreeMap HTTP ${res.status}`);
-    const vt = new VectorTile(new Pbf(new Uint8Array(await res.arrayBuffer())));
-    const extent = vt.layers.boundary?.extent ?? vt.layers.place?.extent ?? 4096;
-
-    const clipper = tileClipper(edges, z, x, y, extent);
-    if (clipper.mode === "none") return { tile: null, cacheable: true };
-
-    const lines = vt.layers.boundary ? boundaryFeatures(vt.layers.boundary, clipper) : [];
-    const labels = vt.layers.place && capitalLevels ? labelFeatures(vt.layers.place, clipper) : [];
-
-    // ตำบลจาก GISTDA: ถ้า service ล่ม ส่ง tile ไปก่อนโดยไม่มีตำบล และไม่เก็บ cache ไว้ให้ลองใหม่ครั้งหน้า
-    let cacheable = true;
-    if (tambonSource && z >= tambon.minzoom) {
-      try {
-        const t = await tambonSource(z, x, y, extent);
-        lines.push({ type: "line", properties: { admin_level: tambonLevel, maritime: 0, disputed: 0 }, geometry: t.lines });
-        for (const l of t.labels) {
-          labels.push({ type: "point", properties: { level: "Tambon", name: l.name, rank: l.rank }, geometry: [l.point] });
-        }
-      } catch (err) {
-        console.error(`admin-boundary tambon ${z}/${x}/${y}: ${err.message}`);
-        cacheable = false;
-      }
-    }
-
-    const layers = [
-      { name: "boundary", features: lines },
-      { name: "label", features: labels },
-    ];
-    return { tile: encodeTile(layers, extent), cacheable };
-  }
-
-  return async (z, x, y) => {
+  const tiles = async (z, x, y) => {
+    if (z > MAX_ZOOM) return null;
     const key = `${z}/${x}/${y}`;
     if (cache.has(key)) return cache.get(key);
-    const { tile, cacheable } = await build(z, x, y);
-    if (cacheable) {
-      cache.set(key, tile);
-      if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value);
-    }
-    return tile;
+    const { tile } = await ready();
+    const { boundary, label } = tile(z, x, y);
+    const buf = encodeTile([
+      { name: "boundary", features: boundary },
+      { name: "label", features: label },
+    ]);
+    cache.set(key, buf);
+    if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value);
+    return buf;
   };
+  tiles.ready = async () => (await ready()).stats;
+  return tiles;
 }
-
-/* -------------------------------------------------------------------------- */
-/* middleware                                                                  */
-/* -------------------------------------------------------------------------- */
 
 /* -------------------------------------------------------------------------- */
 /* glyph ของป้าย                                                              */
@@ -372,7 +182,7 @@ export function createBoundaryTiles({
 
 /**
  * glyph (.pbf) สำหรับป้าย: fontstack ที่มากับ package (เช่น "Kanit Regular") อ่านจากไฟล์
- * ที่เหลือ (เช่น "Noto Sans Regular" ของ basemap) ส่งต่อไป upstream
+ * ที่เหลือ (เช่นฟอนต์ของแผนที่ฐาน) ส่งต่อไป upstream
  * @param {object} [options]
  * @param {string} [options.dir]  โฟลเดอร์ fonts/<fontstack>/<range>.pbf
  * @param {string} [options.upstream]  glyph server สำรอง มี {fontstack} และ {range}
@@ -412,22 +222,31 @@ export function createGlyphs({ dir = FONTS_DIR, upstream = OPENFREEMAP_GLYPHS, f
  * @param {object} [options]
  * @param {string} [options.path="/boundary-tiles"]  tile อยู่ที่ {path}/{z}/{x}/{y}
  * @param {string} [options.fontsPath="/boundary-fonts"]  glyph อยู่ที่ {fontsPath}/{fontstack}/{start}-{end}.pbf
- * @param {object} [options.boundary]  ส่งต่อให้ createBoundaryTiles()
- * @param {object} [options.glyphs]  ส่งต่อให้ createGlyphs() เช่น { upstream } ของ glyph server อื่น
+ * @param {object} [options.boundary]  ส่งต่อให้ createBoundaryTiles() เช่น { cacheDir, service }
+ * @param {object} [options.glyphs]  ส่งต่อให้ createGlyphs() เช่น { upstream } ของแผนที่ฐานอื่น
+ * @param {boolean} [options.preload=true]  เริ่มโหลดข้อมูลทันที ไม่ต้องรอคนแรกขอ tile
  * @param {typeof fetch} [options.fetch]
- * @returns {(req, res, next?) => Promise<void>}
+ * @returns {((req, res, next?) => Promise<void>) & { ready: () => Promise<object> }}
  */
 export function tileMiddleware({
   path = "/boundary-tiles",
   fontsPath = "/boundary-fonts",
   boundary = {},
   glyphs: glyphOptions = {},
+  preload = true,
   fetch = globalThis.fetch,
 } = {}) {
   const tiles = createBoundaryTiles({ fetch, ...boundary });
   const glyphs = createGlyphs({ fetch, ...glyphOptions });
   const tileRe = new RegExp(`^${path}/(\\d+)/(\\d+)/(\\d+)$`);
   const fontRe = new RegExp(`^${fontsPath}/([^/]+)/(\\d+)-(\\d+)\\.pbf$`);
+
+  if (preload) {
+    tiles
+      .ready()
+      .then((s) => console.log(`admin-boundary: พร้อม ${s.tambons} ตำบล ${s.lines} เส้น (${(s.ms / 1000).toFixed(1)} วินาที)`))
+      .catch((err) => console.error(`admin-boundary: โหลดข้อมูล GISTDA ไม่สำเร็จ: ${err.message}`));
+  }
 
   const send = (res, status, body, type = "application/x-protobuf") => {
     const headers = { "Content-Type": type };
@@ -436,7 +255,7 @@ export function tileMiddleware({
     res.end(body ?? undefined);
   };
 
-  return async (req, res, next) => {
+  const handler = async (req, res, next) => {
     const pathname = new URL(req.url, "http://x").pathname;
     try {
       let m = tileRe.exec(pathname);
@@ -459,4 +278,6 @@ export function tileMiddleware({
     }
     next?.();
   };
+  handler.ready = tiles.ready;
+  return handler;
 }

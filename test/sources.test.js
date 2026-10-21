@@ -11,7 +11,7 @@ test("เส้นและป้ายมาจาก source เดียว (/
   assert.deepEqual(r.levels.Amphoe.line, {
     source: "boundary",
     sourceLayer: "boundary",
-    filter: ["all", ["==", ["get", "admin_level"], 6], ["!=", ["get", "maritime"], 1]],
+    filter: ["==", ["get", "admin_level"], 6],
   });
   assert.equal(r.levels.Amphoe.label.sourceLayer, "label");
   assert.deepEqual(r.levels.Amphoe.label.filter, ["==", ["get", "level"], "Amphoe"]);
@@ -38,11 +38,10 @@ test("adminLevels ไม่ใส่บางระดับ = ไม่สร�
   assert.deepEqual(Object.keys(r.levels), ["Province"]);
 });
 
-test("attribution: OpenFreeMap ขึ้นต้น + เครดิตตำบลของ GISTDA (ปิดได้)", () => {
+test("attribution: ขอบเขตการปกครองจาก GISTDA (กรมการปกครอง) ไม่มี OpenFreeMap", () => {
   const a = testDataset().attribution;
-  assert.ok(a.startsWith('<a href="https://openfreemap.org"'));
-  assert.match(a, /ขอบเขตตำบล: .*GISTDA.*กรมการปกครอง/);
-  assert.doesNotMatch(testDataset({ gistdaTambon: false }).attribution, /GISTDA/);
+  assert.match(a, /GISTDA.*กรมการปกครอง/);
+  assert.doesNotMatch(a, /OpenFreeMap|OpenStreetMap/);
 });
 
 test("load() คืนผลเดิมทุกครั้ง", async () => {

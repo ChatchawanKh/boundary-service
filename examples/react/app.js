@@ -157,7 +157,7 @@ function Panel() {
     ${LEVELS.map((level) => html`<${LevelRow} key=${level} level=${level} />`)}
     <h2>มุมมอง (MapLibre)</h2>
     <${ViewSwitch} />
-    <p class="ab-note">ข้อมูล: OpenFreeMap · ตำบล: GISTDA (กรมการปกครอง)</p>
+    <p class="ab-note">ข้อมูล: GISTDA (กรมการปกครอง) · แผนที่ฐาน: OpenFreeMap</p>
     <footer><button type="button" data-role="reset" onClick=${() => store.reset()}>คืนค่าเริ่มต้น</button></footer>
   </aside>`;
 }

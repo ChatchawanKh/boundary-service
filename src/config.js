@@ -45,7 +45,7 @@ export const DEFAULT_LEVEL_STYLES = Object.freeze({
     casingWidth: [[4, 1.2], [8, 2.8], [12, 4], [16, 5]],
     casingOpacity: [[4, 0.3], [8, 0.6]],
     dash: null,
-    minzoom: 4, // z4 ยังเป็นเส้นของ Natural Earth (หยาบ) OSM เริ่มที่ z5 ดู REF.md 1.3
+    minzoom: 4,
     labelMinzoom: 1,
     labelMaxzoom: 10,
     labelSize: 16,
@@ -59,7 +59,7 @@ export const DEFAULT_LEVEL_STYLES = Object.freeze({
     casingWidth: [[8, 1.6], [14, 3]],
     casingOpacity: 0.35,
     dash: [3, 2],
-    minzoom: 8, // ข้อมูลระดับ 6 ใน OpenMapTiles เริ่มมีที่ z9
+    minzoom: 8,
     labelMinzoom: 10,
     labelMaxzoom: 13,
     labelSize: 16,
@@ -86,7 +86,8 @@ export const DEFAULT_LEVEL_STYLES = Object.freeze({
 // tileMiddleware ส่งให้ที่ /boundary-fonts (MapLibre วาดป้ายจาก glyph .pbf เท่านั้น ใช้ฟอนต์เว็บตรงๆ ไม่ได้)
 export const DEFAULT_FONT = Object.freeze(["Kanit Regular"]);
 export const DEFAULT_GLYPHS = "/boundary-fonts/{fontstack}/{range}.pbf";
-// glyph server สำรองสำหรับ fontstack อื่น (เช่น Noto Sans ของ basemap OpenFreeMap)
+// glyph server สำรองสำหรับ fontstack อื่น คือฟอนต์ของแผนที่ฐานในหน้าตัวอย่าง (Noto Sans ของ OpenFreeMap)
+// ไม่เกี่ยวกับข้อมูลขอบเขต ใช้แผนที่ฐานอื่นให้ตั้ง tileMiddleware({ glyphs: { upstream } })
 export const OPENFREEMAP_GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
 
 // รูปแบบป้ายที่ใช้ร่วมกันทุกระดับ
@@ -98,22 +99,25 @@ export const LABEL_STYLE = Object.freeze({
   maxWidth: 100, // em: กว้างพอที่จะไม่ตัดบรรทัด
 });
 
-// เส้นขอบเขต: layer "boundary" ของ OpenFreeMap (OpenMapTiles schema)
-export const OPENFREEMAP_TILEJSON = "https://tiles.openfreemap.org/planet";
-export const OPENFREEMAP_ADMIN_LEVELS = Object.freeze({ Province: 4, Amphoe: 6, Tambon: 8 });
+// ค่า admin_level ของแต่ละระดับใน tile (field "admin_level" ของ layer "boundary")
+export const ADMIN_LEVEL_CODES = Object.freeze({ Province: 4, Amphoe: 6, Tambon: 8 });
 
-// ขอบเขตตำบล: ArcGIS MapServer ของ GISTDA (ข้อมูลกรมการปกครอง ครบ 7,408 ตำบล)
-// OSM มีเส้นตำบลแค่ราว 11% จึงใช้ชุดนี้แทนทั้งเส้นและป้ายของระดับตำบล ตั้งแต่ minzoom
-export const GISTDA_TAMBON_SERVICE = Object.freeze({
-  url: "https://gistdaportal.gistda.or.th/arcgis/rest/services/ข้อมูลเขตการปกครอง/MapServer/4",
-  minzoom: 13,
-  name: "T_Name_T",
-  area: "Shape_Area",
+// ข้อมูลขอบเขตการปกครองทุกระดับ: ArcGIS MapServer ของ GISTDA (ข้อมูลกรมการปกครอง 30 ธ.ค. 2556)
+// จังหวัด 77 · อำเภอ/เขต 929 · ตำบล/แขวง 7,408 ขอบของสามระดับตรงกันทุกจุด
+export const GISTDA_ADMIN_SERVICE = Object.freeze({
+  url: "https://gistdaportal.gistda.or.th/arcgis/rest/services/ข้อมูลเขตการปกครอง/MapServer",
+  layers: Object.freeze({ Province: 2, Amphoe: 3, Tambon: 4 }),
+  fields: Object.freeze({
+    provinceCode: "P_code",
+    provinceName: "P_Name_T",
+    provinceArea: "SHAPE_Area",
+    amphoeCode: "A_code",
+    amphoeName: "A_Name_T",
+    amphoeArea: "Shape_Area",
+    tambonName: "T_Name_T",
+    tambonArea: "Shape_Area",
+  }),
 });
-
-// ป้ายชื่อ: layer "place" ของ OpenFreeMap ไม่มีชื่อพื้นที่การปกครองของไทย จึงใช้จุดเมืองที่เป็นที่ตั้ง
-// ศาลากลาง/ตัวอำเภอ (field capital = admin_level ของเขตที่เมืองนั้นเป็นศูนย์กลาง) ไม่มีระดับตำบล
-export const OPENFREEMAP_CAPITAL_LEVELS = Object.freeze({ 2: "Province", 4: "Province", 6: "Amphoe" });
 
 // มุมกล้องของแต่ละมุมมอง (SDK ที่ไม่รองรับการเอียงจะใช้ 2d เสมอ)
 export const VIEW_CAMERA = Object.freeze({
@@ -123,10 +127,7 @@ export const VIEW_CAMERA = Object.freeze({
 });
 
 export const ATTRIBUTION = Object.freeze({
-  openFreeMap:
-    '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
-  gistdaTambon:
-    'ขอบเขตตำบล: <a href="https://gistdaportal.gistda.or.th" target="_blank">GISTDA</a> (กรมการปกครอง)',
+  gistda: 'ขอบเขตการปกครอง: <a href="https://gistdaportal.gistda.or.th" target="_blank">GISTDA</a> (กรมการปกครอง)',
   terrain:
     '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank">Terrain Tiles (Mapzen/AWS)</a>',
 });

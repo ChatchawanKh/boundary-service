@@ -1,7 +1,8 @@
 // static server เล็กๆ สำหรับเปิดหน้าตัวอย่าง (ES module ต้องเปิดผ่าน http ไม่ใช่ file://)
 //   node scripts/serve.mjs [port]   แล้วเปิด http://localhost:3300/examples/
 //
-// /boundary-tiles (เส้นและป้ายจาก OpenFreeMap ตัดเฉพาะในไทย) มาจาก tileMiddleware ของ src/server.js
+// /boundary-tiles (เส้นและป้ายจากข้อมูล GISTDA) และ /boundary-fonts มาจาก tileMiddleware ของ src/server.js
+// ครั้งแรกดึงข้อมูลจาก GISTDA ราว 20 วินาทีแล้วเก็บ cache ไว้ที่ .cache/admin-boundary
 // โปรเจกต์จริงใช้ middleware ตัวเดียวกันใน Vite / Express (ดู README)
 
 import { createReadStream, statSync } from "node:fs";

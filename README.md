@@ -1,6 +1,6 @@
 # boundary-service
 
-ชั้นข้อมูลขอบเขตการปกครอง **เฉพาะประเทศไทย** (จังหวัด / อำเภอ / ตำบล) พร้อมป้ายชื่อภาษาไทย สำหรับแผนที่ MapLibre GL, Leaflet และ React ไม่ต้องเตรียมไฟล์ข้อมูลเอง: จังหวัด/อำเภอมาจาก OpenFreeMap ตำบลมาจาก GISTDA (ข้อมูลกรมการปกครอง)
+ชั้นข้อมูลขอบเขตการปกครอง **เฉพาะประเทศไทย** (จังหวัด / อำเภอ / ตำบล) พร้อมป้ายชื่อภาษาไทย สำหรับแผนที่ MapLibre GL, Leaflet และ React ไม่ต้องเตรียมไฟล์ข้อมูลเอง: ทุกระดับมาจาก ArcGIS MapServer ของ GISTDA (ข้อมูลกรมการปกครอง)
 
 ติดตั้งเป็น npm package ชื่อ `admin-boundary` (ดู [ข้อ 3](#3-ติดตั้งในโปรเจกต์)) ต้องใช้ Node 18 ขึ้นไปฝั่ง server
 
@@ -16,11 +16,13 @@
 
 | ระดับ | เส้น | ป้ายชื่อ |
 | --- | --- | --- |
-| จังหวัด | ดำ เส้นทึบ ซูมไกลจาง 45% ชัดเต็มที่ซูม 8 | วางที่ตัวเมือง (ที่ตั้งศาลากลาง) |
-| อำเภอ | เทาเข้ม เส้นประ (ข้อมูลเริ่มมีที่ซูม 9) | วางที่ตัวอำเภอ (มีราว 80%) |
-| ตำบล | ขาว เส้นประบนเส้นรองเทาเข้ม ครบ 7,408 ตำบล (GISTDA) | วางกลางพื้นที่ (GISTDA) |
+| ระดับ | จำนวน | เส้น | ป้ายชื่อ |
+| --- | --- | --- | --- |
+| จังหวัด | 77 | ดำ เส้นทึบ ซูมไกลจาง 45% ชัดเต็มที่ซูม 8 | กลางพื้นที่ |
+| อำเภอ/เขต | 929 | เทาเข้ม เส้นประ | กลางพื้นที่ |
+| ตำบล/แขวง | 7,408 | ขาว เส้นประบนเส้นรองเทาเข้ม | กลางพื้นที่ |
 
-จังหวัด/อำเภอมาจาก OpenFreeMap (ข้อมูล OpenStreetMap) server ตัดให้เหลือเฉพาะในไทย ตำบลมาจาก ArcGIS MapServer ของ GISTDA รายละเอียดแหล่งข้อมูล ข้อจำกัด และการอ้างอิงอยู่ใน [REF.md](REF.md)
+เส้นทั้งสามระดับสร้างจากขอบตำบลชุดเดียว จึงซ้อนกันพอดีทุกจุด แผนที่ฐานเลือกได้อิสระ (หน้าตัวอย่างใช้ของ OpenFreeMap) รายละเอียดแหล่งข้อมูล ข้อจำกัด และการอ้างอิงอยู่ใน [REF.md](REF.md)
 
 ## สารบัญ
 
@@ -48,6 +50,8 @@ npm test             # unit test (ไม่ต้องใช้เบราว�
 | [`examples/leaflet/`](examples/leaflet/index.html) | Leaflet + basemap raster + marker เดิม |
 | [`examples/react/`](examples/react/index.html) | store เดียวคุม MapLibre และ Leaflet พร้อมกัน |
 
+**ครั้งแรก** server ดาวน์โหลดข้อมูลจาก GISTDA ราว 150 MB (ราว 20 วินาที) เก็บไว้ที่ `.cache/admin-boundary/` แล้วสร้างเส้นราว 7 วินาที ครั้งต่อไปอ่านจาก cache (log ขึ้น `admin-boundary: พร้อม 7408 ตำบล ...` เมื่อเสร็จ)
+
 ต้องเปิดผ่าน `npm run serve` เท่านั้น (เปิดไฟล์ HTML ตรงๆ ไม่ได้) และ**แก้ไฟล์ฝั่ง server แล้วต้องรีสตาร์ต** (`Ctrl+C` แล้ว `npm run serve` ใหม่) ส่วนไฟล์หน้าเว็บแค่รีเฟรช
 
 พอร์ตชน: `node scripts/serve.mjs 8080`
@@ -60,12 +64,14 @@ npm test             # unit test (ไม่ต้องใช้เบราว�
  UI ─action─▶ createBoundaryStore                 tileMiddleware()
                     │ subscribe                     │
                     ▼                               │
- bindMapLibre / bindLeaflet ──/boundary-tiles──▶ OpenFreeMap → เส้น + ป้าย เฉพาะในไทย
+ bindMapLibre / bindLeaflet ──/boundary-tiles──▶ เส้น + ป้าย (สร้างไว้ในหน่วยความจำ)
+                                                    ▲ ครั้งแรก: ดึงจาก GISTDA MapServer
+                                                    │ แล้วเก็บ cache ใน .cache/admin-boundary
 ```
 
 ต้องมี 2 ส่วนเสมอ:
 
-1. **server:** `tileMiddleware()` ดึง tile ของ OpenFreeMap แล้วตัดให้เหลือเฉพาะประเทศไทย (ทำในเบราว์เซอร์ไม่ได้ เหตุผลอยู่ใน [REF.md](REF.md#ทำไมต้องผ่าน-server))
+1. **server:** `tileMiddleware()` ดึงข้อมูลจาก GISTDA ครั้งเดียว สร้างเส้นที่จำแนกระดับแล้ว และตัด tile ให้ (ทำในเบราว์เซอร์ไม่ได้ เหตุผลอยู่ใน [REF.md](REF.md#ทำไมต้องผ่าน-server))
 2. **หน้าเว็บ:** store + ตัวเชื่อมแผนที่ (`bindMapLibre`, `bindLeaflet` หรือ hook ของ React)
 
 | import | ใช้ที่ | มีอะไร |
@@ -105,8 +111,8 @@ middleware แบบ connect `(req, res, next)` ตอบ 2 path ที่เห
 
 | path | ทำอะไร |
 | --- | --- |
-| `/boundary-tiles/{z}/{x}/{y}` | tile มี 2 layer: `boundary` (เส้น `admin_level` 4/6 จาก OpenFreeMap ตัดเฉพาะในไทย + 8 จาก GISTDA ตั้งแต่ซูม 13) และ `label` (จุดชื่อ `level`, `name`, `rank` ของจังหวัด/อำเภอจาก OpenFreeMap + ตำบลจาก GISTDA) |
-| `/boundary-fonts/{fontstack}/{range}.pbf` | glyph ของป้าย: `Kanit Regular` จากโฟลเดอร์ `fonts/` ที่มากับ package ส่วน fontstack อื่น (เช่น Noto Sans ของ basemap) ส่งต่อไป OpenFreeMap ดู [ข้อ 7.1](#71-ฟอนต์ของป้าย-kanit) |
+| `/boundary-tiles/{z}/{x}/{y}` | tile มี 2 layer: `boundary` (เส้น `admin_level` 4/6/8 = จังหวัด/อำเภอ/ตำบล) และ `label` (จุดชื่อ `level`, `name`, `rank`) |
+| `/boundary-fonts/{fontstack}/{range}.pbf` | glyph ของป้าย: `Kanit Regular` จากโฟลเดอร์ `fonts/` ที่มากับ package ส่วน fontstack อื่น (ฟอนต์ของแผนที่ฐาน) ส่งต่อไป glyph server ของแผนที่ฐาน ดู [ข้อ 7.1](#71-ฟอนต์ของป้าย-kanit) |
 
 **Vite** (ทั้ง `npm run dev` และ `npm run preview`):
 
@@ -140,7 +146,18 @@ app.listen(8080);
 
 **Node `http` ล้วน:** ดู [`scripts/serve.mjs`](scripts/serve.mjs)
 
-tile ที่ตัดแล้ว cache ในหน่วยความจำ 2,000 tile และส่ง `Cache-Control: public, max-age=86400` ให้เบราว์เซอร์/CDN cache ต่อ tile ที่ต้องตัดใช้เวลาครั้งแรกราว 70–200 ms
+**ข้อมูลและ cache**
+
+| | |
+| --- | --- |
+| เริ่ม server | เริ่มโหลดทันที (`preload: true`) คำขอ tile ระหว่างนั้นรอจนพร้อม |
+| ครั้งแรก | ดาวน์โหลดตำบลทีละจังหวัด (77 ครั้ง พร้อมกัน 4 request) + จังหวัด/อำเภอ รวมราว 150 MB ราว 20 วินาที |
+| cache บนดิสก์ | `.cache/admin-boundary/` (นับจากโฟลเดอร์ที่รัน server) อายุ 30 วัน ลบโฟลเดอร์เพื่อดึงใหม่ |
+| สร้างเส้น | ราว 7 วินาที ใช้หน่วยความจำราว 750 MB ระหว่างสร้าง เหลือราว 60 MB หลังเสร็จ |
+| ตัด tile | 2–60 ms ต่อ tile (ครั้งแรกของซูม 6–11 นานกว่าเพราะย่อจุดทั้งประเทศ) cache ในหน่วยความจำ 2,000 tile และส่ง `Cache-Control: public, max-age=86400` |
+| GISTDA ล่ม | ตอบ 502 แล้วลองโหลดใหม่หลัง 60 วินาที (ถ้ามี cache บนดิสก์ ใช้ cache ได้โดยไม่ต้องต่อ GISTDA) |
+
+ตั้งค่าได้ที่ `tileMiddleware({ boundary: { cacheDir, maxAge, concurrency, service } })` เช่น `cacheDir: "/var/cache/admin-boundary"` สำหรับ server จริง
 
 ใช้ path อื่น: `tileMiddleware({ path: "/api/boundary", fontsPath: "/api/fonts" })` แล้วส่ง path เดียวกันให้ฝั่งหน้าเว็บ: `boundaryDataset({ tiles: "/api/boundary" })` และ `bindMapLibre(map, store, { glyphs: "/api/fonts/{fontstack}/{range}.pbf" })`
 
@@ -163,7 +180,7 @@ const map = new maplibregl.Map({
 
 const store = createBoundaryStore();
 const boundary = bindMapLibre(map, store, {
-  hideBasemapLayers: ["boundary_3", "boundary_state"], // ซ่อนเส้นจังหวัดของ basemap (เป็นของทุกประเทศ)
+  hideBasemapLayers: ["boundary_3", "boundary_state"], // ซ่อนเส้นจังหวัด/อำเภอของแผนที่ฐาน OpenFreeMap
 });
 ```
 
@@ -321,10 +338,10 @@ createBoundaryStore({
 
 ป้ายใช้ฟอนต์ [Kanit](https://fonts.google.com/specimen/Kanit) Regular จาก Google Fonts
 
-MapLibre วาดป้ายจาก glyph แบบ SDF (ไฟล์ `.pbf`) ที่โหลดจาก glyph server ของ style เท่านั้น ใช้ฟอนต์เว็บ (CSS `@font-face`) กับป้ายบนแผนที่ไม่ได้ และ OpenFreeMap มีแต่ Noto Sans จึงทำแบบนี้:
+MapLibre วาดป้ายจาก glyph แบบ SDF (ไฟล์ `.pbf`) ที่โหลดจาก glyph server ของ style เท่านั้น ใช้ฟอนต์เว็บ (CSS `@font-face`) กับป้ายบนแผนที่ไม่ได้ และ glyph server ของแผนที่ฐานทั่วไปไม่มี Kanit จึงทำแบบนี้:
 
 1. แปลง `Kanit-Regular.ttf` เป็น glyph ไว้ใน [`fonts/Kanit Regular/`](fonts/) (725 ตัวอักษร 12 ไฟล์ รวม 313 KB พร้อม `OFL.txt`)
-2. `tileMiddleware` ส่ง glyph ที่ `/boundary-fonts/{fontstack}/{range}.pbf` (fontstack อื่นส่งต่อไป OpenFreeMap)
+2. `tileMiddleware` ส่ง glyph ที่ `/boundary-fonts/{fontstack}/{range}.pbf` (fontstack อื่นส่งต่อไป glyph server ของแผนที่ฐาน ค่าเริ่มต้นเป็นของ OpenFreeMap ตามแผนที่ฐานในหน้าตัวอย่าง เปลี่ยนได้ด้วย `tileMiddleware({ glyphs: { upstream } })`)
 3. `bindMapLibre` เปลี่ยน glyph ของ style เป็น URL นั้น (`map.setGlyphs`) แล้วใช้ `font: ["Kanit Regular"]` กับป้าย ป้ายของ basemap ยังเป็น Noto Sans ตามเดิม ตอน `destroy()` คืน glyph เดิมให้
 
 | option ของ `bindMapLibre` | ค่าเริ่มต้น | ความหมาย |
@@ -403,22 +420,19 @@ option เหมือน `bindMapLibre` และเพิ่ม `L` (ค่า
 | --- | --- | --- |
 | `tiles` | `"/boundary-tiles"` | URL ของ tileMiddleware (relative ได้) |
 | `labels` | `true` | `false` = เส้นอย่างเดียว |
-| `gistdaTambon` | `true` | ใส่เครดิตตำบลของ GISTDA (ตั้ง `false` ถ้า server ปิด `boundary.tambon`) |
-| `adminLevels` | `{ Province: 4, Amphoe: 6, Tambon: 8 }` | ระดับ → `admin_level` ของ OpenMapTiles |
+| `adminLevels` | `{ Province: 4, Amphoe: 6, Tambon: 8 }` | ระดับ → `admin_level` ใน tile |
 | `bounds` | `THAILAND_BOUNDS` | ไม่ขอ tile นอกกรอบนี้ |
 
 ### `admin-boundary/server`
 
 | ฟังก์ชัน | ความหมาย |
 | --- | --- |
-| `tileMiddleware({ path?, fontsPath?, boundary?, glyphs?, fetch? })` | middleware แบบ connect |
+| `tileMiddleware({ path?, fontsPath?, boundary?, glyphs?, preload?, fetch? })` | middleware แบบ connect มี `.ready()` รอจนข้อมูลพร้อม คืนสถิติ |
 | `createGlyphs({ dir?, upstream?, fetch? })` | `(fontstack, start) => Promise<Uint8Array>` glyph จากโฟลเดอร์ `fonts/` หรือ upstream |
-| `createBoundaryTiles({ within?, tilejson?, adminLevels?, capitalLevels?, tambon?, fetch? })` | `(z, x, y) => Promise<Uint8Array \| null>` สำหรับ server ที่ไม่ใช่แบบ connect |
+| `createBoundaryTiles({ cacheDir?, maxAge?, concurrency?, service?, minzoom?, fetch? })` | `(z, x, y) => Promise<Uint8Array \| null>` สำหรับ server ที่ไม่ใช่แบบ connect มี `.ready()` |
 | `encodeTile(layers, extent?)` | เขียน Mapbox Vector Tile (เส้นและจุด) |
 
-`tambon` ค่าเริ่มต้น `GISTDA_TAMBON_SERVICE` (`{ url, minzoom: 13, name: "T_Name_T", area: "Shape_Area" }`) หรือ `false` = ใช้เส้นตำบลของ OSM (มีราว 11% ไม่มีชื่อ) ส่งผ่าน middleware ได้ด้วย `tileMiddleware({ boundary: { tambon } })`
-
-`capitalLevels` ค่าเริ่มต้น `{ 2: "Province", 4: "Province", 6: "Amphoe" }` (ค่า `capital` ของ place → ระดับของป้าย) หรือ `false` = ไม่ทำป้าย
+`service` ค่าเริ่มต้น `GISTDA_ADMIN_SERVICE` (URL ของ MapServer, เลข layer และชื่อ field) `minzoom` ค่าเริ่มต้น `{ Province: 0, Amphoe: 6, Tambon: 10 }` คือซูมต่ำสุดที่ server ใส่แต่ละระดับลงใน tile (ต่ำกว่าเกณฑ์การแสดงผล เผื่อปรับ `minzoom` ของสไตล์ลงได้)
 
 ### React (`admin-boundary/react`)
 
@@ -430,18 +444,19 @@ option เหมือน `bindMapLibre` และเพิ่ม `L` (ค่า
 | --- | --- |
 | ไม่มีเส้นและป้ายเลย | ใน DevTools > Network ดู `/boundary-tiles` ถ้า 404 = server ยังไม่มี `tileMiddleware` หรือยังไม่ได้รีสตาร์ตหลังแก้ |
 | `EADDRINUSE` ตอน `npm run serve` | มีเซิร์ฟเวอร์ใช้พอร์ตอยู่แล้ว ปิดตัวเก่าหรือใช้ `node scripts/serve.mjs 8080` |
-| `/boundary-tiles` ได้ 502 | server ต่อ `tiles.openfreemap.org` ไม่ได้ ดูข้อความใน log ของ server |
-| ซูม 13 ขึ้นไปไม่มีเส้น/ป้ายตำบล | server ต่อ `gistdaportal.gistda.or.th` ไม่ได้ ดู log ของ server ที่ขึ้นต้นด้วย `admin-boundary tambon` (tile ที่ขาดตำบลไม่ถูก cache จะลองใหม่เอง) |
-| เส้นตำบลกับเส้นอำเภอ/จังหวัดวิ่งคู่กันไม่ทับพอดี | ข้อมูลต่างแหล่ง (กรมการปกครอง กับ OSM) ดู [REF.md](REF.md#2-ขอบเขตตำบล-gistda-กรมการปกครอง) |
+| เปิดหน้าแรกแล้วเส้นยังไม่ขึ้นสักพัก | ครั้งแรกต้องดาวน์โหลดจาก GISTDA ราว 20 วินาที + สร้างเส้นราว 7 วินาที รอ log `admin-boundary: พร้อม ...` |
+| `/boundary-tiles` ได้ 502 | server ต่อ `gistdaportal.gistda.or.th` ไม่ได้ และยังไม่มี cache ดู log `admin-boundary: โหลดข้อมูล GISTDA ไม่สำเร็จ` จะลองใหม่เองหลัง 60 วินาที |
+| ข้อมูลไม่อัปเดต | cache อายุ 30 วัน ลบ `.cache/admin-boundary/` แล้วรีสตาร์ตเพื่อดึงใหม่ |
+| server หน่วยความจำไม่พอตอนเริ่ม | ระหว่างสร้างเส้นใช้ราว 750 MB ให้ Node มี heap พอ (`node --max-old-space-size=1024`) |
 | ป้ายไม่ขึ้นหรือเป็นกล่องสี่เหลี่ยม | ดู `/boundary-fonts/...` ใน DevTools > Network ถ้า 404 = server ยังไม่มี `tileMiddleware` รุ่นที่มี glyph หรือ `font` ไม่ตรงชื่อโฟลเดอร์ใน `fonts/` (Sphere: `glyphs: false, font: ["noto"]`) |
-| เส้นจังหวัดของประเทศเพื่อนบ้านยังขึ้น | เป็นเส้นของ basemap ให้ใส่ `hideBasemapLayers` (Leaflet ที่ใช้ basemap แบบภาพ raster ซ่อนไม่ได้) |
-| ปลายเส้นสั้นๆ ข้ามชายแดนเมื่อซูมลึก | ขอบที่ใช้ตัดขยายออก 1 กม. ดู [REF.md](REF.md#3-ขอบประเทศไทยที่ใช้ตัดเส้น) |
+| เส้นจังหวัด/อำเภอของแผนที่ฐานซ้อนกับของเรา | เป็นเส้นของแผนที่ฐาน (OSM) ให้ใส่ `hideBasemapLayers` (Leaflet ที่ใช้แผนที่ฐานแบบภาพ raster ซ่อนไม่ได้) |
+| เส้นจังหวัดตามแนวชายแดน/ชายฝั่งไม่ขึ้น | ตั้งใจไม่วาดขอบที่มีพื้นที่ฝั่งเดียว ให้แผนที่ฐานวาดเส้นประเทศและชายฝั่ง ดู [REF.md](REF.md#1-ข้อมูลขอบเขตการปกครอง-gistda) |
 
 ## โครงสร้าง
 
 ```
 src/
-  config.js     ระดับ, สไตล์ตั้งต้น, admin_level/capital ของ OpenFreeMap, มุมกล้อง, attribution, DEM
+  config.js     ระดับ, สไตล์ตั้งต้น, service ของ GISTDA, มุมกล้อง, attribution, DEM
   store.js      createBoundaryStore()
   sources.js    boundaryDataset()
   style.js      state → layer ตาม MapLibre style spec
@@ -450,8 +465,7 @@ src/
   react.js      React bindings
   index.js      export ฝั่งเบราว์เซอร์ (ยกเว้น react)
   server.js     tileMiddleware(), createBoundaryTiles(), createGlyphs()  (Node)
-  tambon.js     เส้นและป้ายตำบลจาก GISTDA ArcGIS (Node)
-  thailand.js   ขอบประเทศไทยแบบย่อ ที่ server ใช้ตัดเส้น
+  gistda.js     โหลดข้อมูล GISTDA, สร้างเส้นจำแนกระดับ, ย่อจุด, ตัด tile  (Node)
 examples/       หน้าตัวอย่าง
 fonts/          glyph ของป้าย (Kanit Regular) + OFL.txt
 scripts/        serve.mjs (static server + tileMiddleware สำหรับหน้าตัวอย่าง), build-glyphs.mjs (TTF → glyph)
@@ -464,4 +478,4 @@ REF.md          แหล่งข้อมูล สัญญาอนุญา
 ## License
 
 - โค้ด: MIT (ตาม `license` ใน `package.json`)
-- ข้อมูลบนแผนที่: © OpenStreetMap contributors (ODbL) ผ่าน OpenFreeMap / © OpenMapTiles ต้องแสดงเครดิตเสมอ รายละเอียดและข้อความอ้างอิงอยู่ใน [REF.md](REF.md)
+- ข้อมูลขอบเขตการปกครอง: GISTDA (ข้อมูลกรมการปกครอง) service ไม่ได้ระบุสัญญาอนุญาต ควรสอบถาม GISTDA ก่อนเปิดให้คนทั่วไปใช้ แผนที่แสดงเครดิตให้แล้ว รายละเอียดและข้อความอ้างอิงอยู่ใน [REF.md](REF.md)

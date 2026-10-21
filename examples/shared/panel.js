@@ -64,7 +64,7 @@ export function mountPanel(el, { store, supports3d = true, sdk = "", basemaps, o
       }
     </section>
 
-    <p class="ab-note">ข้อมูล: OpenFreeMap · ตำบล: GISTDA (กรมการปกครอง)</p>
+    <p class="ab-note">ข้อมูล: GISTDA (กรมการปกครอง) · แผนที่ฐาน: OpenFreeMap</p>
 
     <footer><button type="button" data-role="reset">คืนค่าเริ่มต้น</button></footer>
   `;

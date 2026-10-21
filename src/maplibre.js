@@ -31,7 +31,7 @@ function diffProps(prev = {}, next = {}, apply) {
  * @param {string} [options.prefix="admin-boundary"]  prefix ของ id ทุก layer/source
  * @param {string[]} [options.font]  fontstack ของป้าย (ค่าเริ่มต้น ["Kanit Regular"])
  * @param {string|false} [options.glyphs]  glyph server ของแผนที่ (ค่าเริ่มต้น /boundary-fonts ของ tileMiddleware
- *   ซึ่งมี Kanit และส่งต่อ fontstack อื่นไป OpenFreeMap) หรือ false = ใช้ glyph ของ style เดิม
+ *   ซึ่งมี Kanit และส่งต่อ fontstack อื่นไป glyph server ของแผนที่ฐาน) หรือ false = ใช้ glyph ของ style เดิม
  * @param {string} [options.beforeId]  แทรกเส้นไว้ใต้ layer นี้ (ค่าเริ่มต้น = ป้ายแรกของแผนที่ฐาน)
  * @param {boolean} [options.supports3d=true]  false = แสดงแบบ 2d เสมอ
  * @param {object|false} [options.terrain]  raster-dem source สำหรับมุมมอง 3d หรือ false = ไม่ใช้

@@ -8,213 +8,100 @@
 
 | ส่วน | แหล่งข้อมูล | สัญญาอนุญาต | ต้องแสดงเครดิต |
 | --- | --- | --- | --- |
-| เส้นขอบเขต จังหวัด/อำเภอ | OpenStreetMap ผ่าน OpenFreeMap (layer `boundary`) ซูม 0–4 ใช้ Natural Earth (ดู [1.3](#13-ที่มาของเส้นขอบเขต)) | ODbL 1.0 (ข้อมูล), CC-BY 4.0 (schema) | ✓ |
-| ป้ายชื่อจังหวัด/อำเภอ | OpenStreetMap ผ่าน OpenFreeMap (layer `place`) | ODbL 1.0 (ข้อมูล), CC-BY 4.0 (schema) | ✓ (ข้อความเดียวกับเส้น) |
-| เส้นและป้ายชื่อตำบล | GISTDA ArcGIS MapServer ข้อมูลกรมการปกครอง (ดู [ข้อ 2](#2-ขอบเขตตำบล-gistda-กรมการปกครอง)) | ไม่ได้ระบุไว้ใน service (copyright: GISTDA) | ✓ (ใส่ไว้แล้ว) |
-| ขอบประเทศไทยที่ใช้ตัดเส้น | Natural Earth 10m ผ่าน `world-atlas` | Public domain | ไม่บังคับ |
-| ภูมิประเทศในมุมมอง 3D | Mapzen Terrain Tiles บน AWS | หลายแหล่ง (ดูด้านล่าง) | ✓ |
-| แผนที่ฐานในตัวอย่าง | OpenFreeMap styles, OpenStreetMap tile server | ODbL / เงื่อนไขการใช้ tile | ✓ |
+| เส้นและป้ายชื่อ จังหวัด/อำเภอ/ตำบล | ArcGIS MapServer ของ GISTDA ข้อมูลกรมการปกครอง (ดู [ข้อ 1](#1-ข้อมูลขอบเขตการปกครอง-gistda)) | ไม่ได้ระบุไว้ใน service (copyright: GISTDA) | ✓ (ใส่ไว้แล้ว) |
 | ฟอนต์ป้าย | Kanit (Google Fonts) แปลงเป็น glyph ใน `fonts/` | SIL OFL 1.1 | ไม่บังคับ (แนบ `OFL.txt` แล้ว) |
+| ภูมิประเทศในมุมมอง 3D | Mapzen Terrain Tiles บน AWS | หลายแหล่ง (ดู [ข้อ 2](#2-ภูมิประเทศ-มุมมอง-3d)) | ✓ |
+| แผนที่ฐานในหน้าตัวอย่าง | OpenFreeMap styles, OpenStreetMap tile server | ODbL / เงื่อนไขการใช้ tile | ✓ (แผนที่ฐานแสดงเอง) |
 
 ข้อความเครดิตที่แผนที่แสดงอัตโนมัติ (มุมขวาล่าง) มาจาก `ATTRIBUTION` ใน [src/config.js](src/config.js) **อย่าซ่อน attribution control ของแผนที่** ถ้าจำเป็นต้องซ่อน ให้แสดงข้อความเดียวกันที่อื่นบนหน้าเว็บ
 
 ---
 
-## 1. OpenFreeMap (เส้นและป้ายชื่อ)
+## 1. ข้อมูลขอบเขตการปกครอง: GISTDA
 
-**ใช้ทำอะไร:** เส้นจังหวัด/อำเภอ และป้ายชื่อจังหวัด/อำเภอ (ระดับตำบลใช้ข้อมูลของ GISTDA ดู [ข้อ 2](#2-ขอบเขตตำบล-gistda-กรมการปกครอง))
-
-**ที่มา**
-
-| | |
-| --- | --- |
-| ผู้ให้บริการ tile | [OpenFreeMap](https://openfreemap.org) (ฟรี ไม่ต้องลงทะเบียน ไม่มี API key) |
-| TileJSON | `https://tiles.openfreemap.org/planet` (`version` 3.16.0, ซูม 0–14) |
-| tile | `https://tiles.openfreemap.org/planet/{รุ่น}/{z}/{x}/{y}.pbf` รุ่นเปลี่ยนเป็นรอบ เช่น `20261018_080001_pt` server จึงอ่าน TileJSON ใหม่ทุกชั่วโมง |
-| schema | [OpenMapTiles](https://openmaptiles.org/schema/) |
-| ข้อมูลต้นทาง | [OpenStreetMap](https://www.openstreetmap.org) |
-
-server (`tileMiddleware` ใน [src/server.js](src/server.js)) ดึง tile ของ OpenFreeMap แล้วทำ tile ใหม่ที่มี 2 layer ส่งให้เบราว์เซอร์ที่ `/boundary-tiles/{z}/{x}/{y}`
-
-### 1.1 เส้น: layer `boundary`
-
-ข้อมูลต้นทาง: relation `boundary=administrative` ใน OSM
-
-| field | ค่า | ใช้อย่างไร |
-| --- | --- | --- |
-| `admin_level` | 4 = จังหวัด, 6 = อำเภอ, 8 = ตำบล | เลือกระดับ (`OPENFREEMAP_ADMIN_LEVELS`) ระดับ 8 ถูกตัดทิ้งและใช้เส้นตำบลของ GISTDA แทน |
-| `maritime` | 1 = เส้นเขตทางทะเล | ตัดออก |
-| `disputed` | 1 = พื้นที่พิพาท | ตัดออก |
-
-แล้วตัดเส้นทีละช่วงให้เหลือเฉพาะในไทย (ดู [ข้อ 3](#3-ขอบประเทศไทยที่ใช้ตัดเส้น))
-
-### 1.2 ป้ายชื่อ: layer `place`
-
-layer `place` ของ OpenMapTiles **ไม่มีชื่อพื้นที่การปกครองของไทย** (จังหวัดไทยไม่อยู่ในคลาส `state` และไม่มีชื่ออำเภอ/ตำบลเป็นพื้นที่) จึงใช้จุดเมืองที่เป็น**ที่ตั้งศูนย์กลาง**ของเขตแทน โดยดูจาก field `capital` (= `admin_level` ของเขตที่เมืองนั้นเป็นศูนย์กลาง ข้อมูลจาก tag `capital=*` ใน OSM)
-
-| `capital` | ความหมาย | ป้ายระดับ | ตัวอย่าง |
-| --- | --- | --- | --- |
-| 2 | เมืองหลวง | จังหวัด | กรุงเทพมหานคร |
-| 4 | ที่ตั้งศาลากลางจังหวัด | จังหวัด | ขอนแก่น, เชียงใหม่ |
-| 6 | ที่ตั้งตัวอำเภอ | อำเภอ | น้ำพอง, ชุมแพ |
-
-ค่านี้ตั้งไว้ใน `OPENFREEMAP_CAPITAL_LEVELS` ([src/config.js](src/config.js))
-
-| field ของ `place` | ใช้อย่างไร |
-| --- | --- |
-| `capital` | เลือกจุดและระดับตามตารางข้างบน |
-| `name:th` (ไม่มีใช้ `name`) | ชื่อบนป้าย ตัดคำนำหน้า `เทศบาลนคร` `เทศบาลเมือง` `เทศบาลตำบล` `อำเภอ` `จังหวัด` ออก |
-| `rank` | ลำดับความสำคัญ (น้อย = สำคัญ ได้วางก่อนเมื่อชนกัน) |
-
-เก็บเฉพาะจุดที่อยู่ในประเทศไทย layer `label` ที่ส่งให้เบราว์เซอร์มี field `level` (`Province`/`Amphoe`), `name`, `rank`
-
-### ข้อจำกัดของป้ายชื่อ
-
-- **ไม่มีชื่อตำบล:** OSM/OpenMapTiles ไม่มีจุดศูนย์กลางตำบลที่ระบุ `capital=8` ป้ายตำบลจึงมาจาก GISTDA (ข้อ 2)
-- **ป้ายวางที่ตัวเมือง ไม่ใช่กลางพื้นที่:** ป้ายจังหวัดอยู่ที่ตัวเมือง (ศาลากลาง) ป้ายอำเภออยู่ที่ตัวอำเภอ ซึ่งบางแห่งอยู่ใกล้ขอบเขต
-- **อำเภอไม่ครบ:** จุดที่มี `capital=6` มีราว 80% ของอำเภอ (นับจากพื้นที่รอบจังหวัดขอนแก่นได้ 84 จุด) ขึ้นกับว่าใน OSM ใส่ tag `capital` ไว้หรือไม่
-- **ชื่อเป็นชื่อเมือง ไม่ใช่ชื่อเขต:** ส่วนใหญ่ตรงกัน แต่บางแห่งต่างกัน เช่น อำเภอเมือง (จุดเดียวกับศาลากลาง จึงแสดงเป็นชื่อจังหวัด) หรือชื่อเทศบาลที่ไม่ตรงชื่ออำเภอ
-- **ข้อมูลเปลี่ยนตาม OSM:** ถ้ามีคนแก้ tag `capital` หรือ `name:th` ใน OSM ป้ายจะเปลี่ยนตามเมื่อ OpenFreeMap อัปเดตรุ่น
-
-### 1.3 ที่มาของเส้นขอบเขต
-
-OpenFreeMap ไม่ได้มีข้อมูลขอบเขตของตัวเอง ระบบดาวน์โหลดไฟล์ OpenStreetMap ทั้งโลกทุกสัปดาห์ แล้วแปลงเป็น tile ด้วย [Planetiler](https://github.com/onthegomap/planetiler) ตาม schema OpenMapTiles ([README ของ OpenFreeMap](https://github.com/hyperknot/openfreemap))
-
-**แหล่งข้อมูลตามระดับซูม** (จาก [`Boundary.java`](https://github.com/openmaptiles/planetiler-openmaptiles/blob/main/src/main/java/org/openmaptiles/layers/Boundary.java) ของ planetiler-openmaptiles)
-
-| ซูม | แหล่งข้อมูล | ระดับที่มี |
-| --- | --- | --- |
-| 0–4 | Natural Earth: `ne_10m_admin_1_states_provinces_lines` (เส้นระดับจังหวัด, เฉพาะเส้นที่ `min_zoom` ≤ 7.7) | 2, 4 |
-| 5 ขึ้นไป | OSM relation `boundary=administrative` | 4 จากซูม 5 · 6 จากซูม 9 · 8 จากซูม 11 |
-
-ผลกับโปรเจกต์นี้:
-
-- เส้นจังหวัดเริ่มแสดงที่ซูม 4 ตามเกณฑ์ของ air_gistda ซูม 4 เป็นเส้นของ Natural Earth ซึ่งหยาบและไม่ครบ (แสดงจาง 45% อยู่แล้ว) เส้นจาก OSM เริ่มที่ซูม 5
-- เส้นอำเภอตั้งไว้ที่ซูม 8 แต่ข้อมูลจริงเริ่มมีที่ซูม 9 ส่วนเส้นตำบลไม่ใช้ของ OSM แล้ว (ใช้ GISTDA ตั้งแต่ซูม 13)
-- เส้นหนึ่งเส้นที่เป็นขอบของหลายระดับ ได้ `admin_level` ต่ำสุด เช่น ขอบตำบลที่ทับขอบจังหวัดนับเป็นระดับ 4 ขอบตำบลที่ทับชายแดนนับเป็นระดับ 2 (เส้นประเทศของ basemap)
-
-**เส้นใน OSM ของไทยมาจากไหน** (ถามผ่าน Overpass API เมื่อ 21 ตุลาคม 2026)
-
-| ระดับ | relation ใน OSM | จำนวนจริงในไทย | tag `source` บน relation |
-| --- | --- | --- | --- |
-| จังหวัด (`admin_level` 4) | 78 | 77 | ไม่ระบุเลย |
-| อำเภอ/เขต (6) | 928 | 878 อำเภอ + 50 เขต = 928 | ระบุ 12 relation: OCHA COD-AB / Royal Thai Survey Department (กรมแผนที่ทหาร) |
-| ตำบล/แขวง (8) | **853** | ราว 7,400 | ระบุ 104 relation: Longdo.com, ราชกิจจานุเบกษา (`ratchakitcha.soc.go.th`), OCHA COD-AB / กรมแผนที่ทหาร, แผนที่ภาษีของกรมส่งเสริมการปกครองท้องถิ่น (`ltax.dla.go.th`) |
-
-tag `source` บนเส้น (way) ของจังหวัดขอนแก่น ([relation 1908778](https://www.openstreetmap.org/relation/1908778), 128 way) เป็นตัวอย่างว่าเส้นระดับจังหวัดมาจากไหน:
-
-| `source` | จำนวน way | ความหมาย |
-| --- | --- | --- |
-| `VMAP0` | 63 | Vector Map Level 0 ข้อมูลแผนที่โลก 1:1,000,000 ของหน่วยงานแผนที่สหรัฐฯ (public domain) ที่นำเข้า OSM ช่วงแรก |
-| `Bing`, `Bing; sign` และแบบคล้ายกัน | 39 | อาสาสมัครวาดจากภาพดาวเทียม Bing และป้ายบนถนน |
-| `LandSat; sign` และแบบผสม (บางส่วนมี Bing ด้วย) | 11 | วาดจากภาพ Landsat |
-| `Mapbox` | 2 | วาดจากภาพดาวเทียม Mapbox |
-| ไม่ระบุ | 11 | |
-| อื่นๆ | 2 | |
-
-สรุป: เส้นขอบเขตของไทยใน OSM **ไม่ได้มาจากข้อมูลทางราชการชุดเดียว** แต่ผสมการนำเข้า VMAP0, การวาดจากภาพดาวเทียม และการอ้างอิงประกาศ/แผนที่ของหน่วยงานไทยบางส่วน คำถามที่ใช้ซ้ำได้:
-
-```
-[out:json][timeout:120];
-area["ISO3166-1"="TH"][admin_level=2]->.th;
-relation(area.th)["boundary"="administrative"]["admin_level"~"^(4|6|8)$"];
-out tags;
-```
-
-### ข้อจำกัดของเส้น
-
-- ขอบเขตใน OSM แก้ไขโดยอาสาสมัครจากหลายแหล่ง (ดู [1.3](#13-ที่มาของเส้นขอบเขต)) อาจไม่ตรงกับประกาศทางราชการ **ไม่ควรใช้เป็นหลักฐานทางกฎหมาย**
-- เส้นจังหวัดส่วนใหญ่มาจาก VMAP0 มาตราส่วน 1:1,000,000 อาจคลาดจากเส้นจริงได้หลายร้อยเมตรเมื่อซูมลึก
-- เส้นตำบลใน OSM มีราว 11% (853 จากราว 7,400 ตำบล/แขวง) จึงเปลี่ยนไปใช้ข้อมูลของ GISTDA ที่ครบ 7,408 ตำบล (ข้อ 2) จังหวัดและอำเภอใน OSM มีครบ
-- tile ซูม 4 เป็นเส้นของ Natural Earth จึงมีเส้นจังหวัดไม่ครบ เส้นจาก OSM เริ่มที่ซูม 5
-
-### สัญญาอนุญาต
-
-- ข้อมูล OpenStreetMap: [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/) ต้องให้เครดิต OpenStreetMap contributors ถ้าเผยแพร่ฐานข้อมูลที่ดัดแปลงต้องใช้ ODbL เหมือนกัน ([รายละเอียด](https://www.openstreetmap.org/copyright))
-- schema OpenMapTiles: [CC-BY 4.0](https://github.com/openmaptiles/openmaptiles/blob/master/LICENSE.md) ต้องให้เครดิต © OpenMapTiles
-- OpenFreeMap ขอให้ใส่เครดิตตามข้อความใน TileJSON
-
-tile ที่ server ทำใหม่ (ตัดเส้น เลือกจุด เปลี่ยนชื่อ field) ถือเป็นงานดัดแปลงจากข้อมูล OSM จึงต้องให้เครดิตเหมือนเดิม
-
-**เครดิตที่ใช้** (ตรงกับ `attribution` ใน TileJSON ของ OpenFreeMap จึงรวมกับของ basemap ไม่ขึ้นซ้ำ):
-
-```html
-<a href="https://openfreemap.org">OpenFreeMap</a> <a href="https://www.openmaptiles.org/">&copy; OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>
-```
-
-## 2. ขอบเขตตำบล: GISTDA (กรมการปกครอง)
-
-**ใช้ทำอะไร:** เส้นและป้ายชื่อตำบล/แขวง ตั้งแต่ซูม 13 แทนเส้นตำบลของ OSM ที่มีแค่ราว 11%
+**ใช้ทำอะไร:** เส้นและป้ายชื่อทุกระดับ (จังหวัด อำเภอ/เขต ตำบล/แขวง)
 
 **ที่มา**
 
 | | |
 | --- | --- |
-| service | ArcGIS MapServer ของ GISTDA `https://gistdaportal.gistda.or.th/arcgis/rest/services/ข้อมูลเขตการปกครอง/MapServer/4` (layer "ขอบเขตตำบล") |
+| service | ArcGIS MapServer ของ GISTDA [`https://gistdaportal.gistda.or.th/arcgis/rest/services/ข้อมูลเขตการปกครอง/MapServer`](https://gistdaportal.gistda.or.th/arcgis/rest/services/ข้อมูลเขตการปกครอง/MapServer) |
 | คำอธิบาย service | "ข้อมูลการปกครอง" copyright "GISTDA" |
-| จำนวน | 7,408 ตำบล/แขวง ครบ 77 จังหวัด |
-| แหล่งข้อมูลต้นทาง (field `Source_Nam`) | `DOPA` (กรมการปกครอง) 7,150 แถว · `GISTDA` 104 แถว · ไม่ระบุ 154 แถว |
-| วันที่ข้อมูล (field `Source_dat`) | 30 ธันวาคม 2013 ทุกแถว |
 | ระบบพิกัดต้นทาง | UTM zone 47N (EPSG:32647) ขอผลเป็น WGS84 (`outSR=4326`) |
+| วันที่ข้อมูล (field `Source_dat`) | 30 ธันวาคม 2013 (พ.ศ. 2556) ทุกแถวทุก layer |
 
-service เดียวกันมี layer อื่นที่ยังไม่ได้ใช้: 0 ตำแหน่งองค์กรปกครองส่วนท้องถิ่น, 1 ตำแหน่งหมู่บ้าน, 2 ขอบเขตจังหวัด (77), 3 ขอบเขตอำเภอ (929)
+| layer | ชื่อ | จำนวน | แหล่งข้อมูลต้นทาง (field `Source_Nam`) | ใช้ทำอะไร |
+| --- | --- | --- | --- | --- |
+| 2 | ขอบเขตจังหวัด | 77 | `DOPA` (กรมการปกครอง) 77 | ป้ายจังหวัด |
+| 3 | ขอบเขตอำเภอ | 929 (อำเภอ 879 + เขต 50) | `DOPA` 879 · `GISTDA` 50 | ป้ายอำเภอ |
+| 4 | ขอบเขตตำบล | 7,408 | `DOPA` 7,150 · `GISTDA` 104 · ไม่ระบุ 154 | เส้นทุกระดับ + ป้ายตำบล |
 
-**field ที่ใช้**
+layer อื่นที่ไม่ได้ใช้: 0 ตำแหน่งองค์กรปกครองส่วนท้องถิ่น, 1 ตำแหน่งหมู่บ้าน
 
-| field | ใช้อย่างไร |
-| --- | --- |
-| `T_Name_T` | ชื่อบนป้าย ตัดคำนำหน้า `ตำบล` / `แขวง` ออก |
-| `Shape_Area` | จัดลำดับป้าย: พื้นที่ใหญ่ได้วางก่อนเมื่อชนกัน |
+**field ที่ใช้** (ตั้งไว้ใน `GISTDA_ADMIN_SERVICE.fields` ใน [src/config.js](src/config.js))
 
-field อื่นที่มี: `Admin_code` (รหัส 6 หลักของกรมการปกครอง เช่น 100101), `P_code`/`A_code`/`T_code`, ชื่อจังหวัด/อำเภอ/ตำบลภาษาไทยและอังกฤษ, `Population`
+| layer | field | ใช้อย่างไร |
+| --- | --- | --- |
+| 4 ตำบล | `P_code`, `A_code` | จำแนกระดับของเส้น (ตำบลสองฝั่งต่างจังหวัด/ต่างอำเภอหรือไม่) |
+| 2/3/4 | `P_Name_T`, `A_Name_T`, `T_Name_T` | ชื่อบนป้าย ตัดคำนำหน้า `จังหวัด` / `อำเภอ` `เขต` / `ตำบล` `แขวง` ออก |
+| 2/3/4 | `SHAPE_Area`, `Shape_Area` | จัดลำดับป้าย: พื้นที่ใหญ่ได้วางก่อนเมื่อชนกัน |
 
-**วิธีใช้** ([src/tambon.js](src/tambon.js)) ทุก tile ซูม 13–14 ที่เบราว์เซอร์ขอ server จะ:
+field อื่นที่มี: `Admin_code` (รหัสกรมการปกครอง), ชื่อภาษาอังกฤษ (`*_Name_E`), `Population` (ตำบล), `P_group` (จังหวัด)
 
-1. query ตำบลที่ตัดกับกรอบ tile (`geometry` แบบ envelope, `f=geojson`, ไม่ย่อจุด)
-2. แปลงขอบ polygon เป็นเส้น เก็บขอบที่สองตำบลใช้ร่วมกันไว้เส้นเดียว (ทดสอบแล้ว ขอบร่วมในกรอบ tile จับคู่ได้ 100% เมื่อไม่ย่อจุด ถ้าย่อจุดจะไม่ตรงกัน) แล้วต่อเป็นเส้นยาว เส้นประจึงต่อเนื่อง
-3. วางป้ายที่จุด "ลึก" ที่สุดของพื้นที่ (pole of inaccessibility) ใส่เฉพาะ tile ที่จุดนั้นตกอยู่ ป้ายจึงไม่ซ้ำ
-4. ตัดเส้นตำบลของ OSM ออกจาก tile แล้วใส่ของ GISTDA แทน
+### วิธีดึงข้อมูล
 
-ขนาดข้อมูลราว 20–60 KB และ 40–140 ms ต่อ tile แล้ว cache ไว้ใน server ถ้า service ล่ม tile ยังส่งไปได้แต่ไม่มีตำบล และไม่เก็บ cache เพื่อให้ลองใหม่ครั้งหน้า ปิดได้ด้วย `tileMiddleware({ boundary: { tambon: false } })`
+ดึงจาก service ครั้งเดียวตอนเริ่ม server แล้วเก็บ cache ไว้ที่ `.cache/admin-boundary/` (อายุ 30 วัน)
 
-**สัญญาอนุญาต/เครดิต:** service ไม่ได้ระบุสัญญาอนุญาต (มีแค่ copyright "GISTDA") ก่อนนำไปใช้กับระบบที่เปิดให้คนทั่วไปใช้ ควรสอบถามเงื่อนไขกับ GISTDA เครดิตที่ใช้: `ขอบเขตตำบล: GISTDA (กรมการปกครอง)` (ลิงก์ไป gistdaportal.gistda.or.th)
+| ข้อมูล | query | ขนาด |
+| --- | --- | --- |
+| ตำบล (layer 4) | ทีละจังหวัด `where=P_code='xx'` 77 ครั้ง (พร้อมกัน 4 request) แบบไม่ย่อจุด `geometryPrecision=7` | รวมราว 145 MB, 3.08 ล้านจุด |
+| อำเภอ (layer 3) | ทั้งประเทศ ย่อจุด `maxAllowableOffset=0.0005` (≈ 50 ม.) ใช้หาจุดวางป้ายเท่านั้น | ราว 5 MB |
+| จังหวัด (layer 2) | ทั้งประเทศ ย่อจุด `maxAllowableOffset=0.001` (≈ 100 ม.) ใช้หาจุดวางป้ายเท่านั้น | ราว 1 MB |
 
-**ข้อจำกัด**
+ทุก query ใช้ `POST` และ `f=geojson` ครั้งแรกใช้เวลาราว 20 วินาที
 
-- **ไม่ทับกับเส้นอำเภอ/จังหวัดของ OSM พอดี:** ข้อมูลต่างแหล่ง (กรมการปกครอง กับ OSM ที่ส่วนใหญ่มาจาก VMAP0) ที่ซูม 13 ขึ้นไปจะเห็นเส้นตำบลกับเส้นอำเภอ/จังหวัดวิ่งคู่กันห่างราว 100–200 ม. ตามแนวเขตอำเภอและจังหวัด ถ้าเปลี่ยนเส้นอำเภอและจังหวัดไปใช้ layer 3 และ 2 ของ service เดียวกัน เส้นจะตรงกันทั้งหมด
-- **ข้อมูลปี 2013:** ตำบลที่ตั้ง/เปลี่ยนแปลงหลังจากนั้นจะไม่ตรง
-- **พึ่งพา service ภายนอก:** ถ้า gistdaportal ล่มหรือย้าย URL ตำบลจะหายไป (ตั้ง URL ใหม่ได้ที่ `GISTDA_TAMBON_SERVICE` หรือ `boundary.tambon`)
-- **ภาระของ server ต้นทาง:** ทุก tile ซูม 13–14 ที่ยังไม่มีใน cache เรียก service หนึ่งครั้ง
+**ทำไมไม่ดึงทีละ tile:** ที่ซูมต่ำข้อมูลใหญ่และช้า (จังหวัดซูม 5 แบบเต็มความละเอียด 11 MB / 2.2 วินาทีต่อ tile) และถ้าให้ service ย่อจุดให้ (`maxAllowableOffset`) แต่ละพื้นที่จะถูกย่อแยกกัน ขอบร่วมจับคู่ได้แค่ 40–60% เส้นที่ใช้ร่วมกันจะซ้อนเหลื่อมกันและเส้นประเพี้ยน ส่วนอำเภอทั้งประเทศแบบเต็มความละเอียด server ปฏิเสธ
 
-## 3. ขอบประเทศไทยที่ใช้ตัดเส้น
+### วิธีสร้างเส้น ([src/gistda.js](src/gistda.js))
 
-**ใช้ทำอะไร:** server ใช้ตัดเส้นและเลือกจุดป้ายให้เหลือเฉพาะในไทย ([src/thailand.js](src/thailand.js), 31 KB) ไม่ได้วาดบนแผนที่
+ทั้งสามระดับสร้างจากขอบของ **ตำบล** ชุดเดียว:
 
-**ที่มา**
+1. เก็บขอบทุกช่วงของทุกตำบลครั้งเดียว พร้อมตำบลสองฝั่งของขอบนั้น (ใช้พิกัดเดิมเป็น key ขอบร่วมจึงตรงกันพอดี)
+2. จำแนกระดับ: ตำบลสองฝั่งต่างจังหวัด → เส้นจังหวัด (`admin_level` 4) ต่างอำเภอ → เส้นอำเภอ (6) นอกนั้น → เส้นตำบล (8)
+3. ขอบที่มีตำบลฝั่งเดียว (ชายแดนประเทศและชายฝั่ง 252,301 ช่วง) **ไม่วาด** ให้แผนที่ฐานวาดเส้นประเทศและชายฝั่ง
+4. ต่อขอบเป็นเส้นยาว ตัดที่ทางแยกและที่ระดับเปลี่ยน ได้ 21,070 เส้น (จังหวัด 2,465 · อำเภอ 6,382 · ตำบล 12,223)
+5. ย่อจุดทีละเส้นตามซูม (Douglas–Peucker คลาดไม่เกินครึ่ง px) ปลายเส้นคงที่ ขอบร่วมจึงยังตรงกันทุกซูม ซูม 12 ขึ้นไปใช้เต็มความละเอียด
+6. ตัด tile ตามกรอบ + buffer ส่งเป็น Mapbox Vector Tile layer `boundary` และ `label`
 
-| | |
-| --- | --- |
-| ข้อมูล | [Natural Earth](https://www.naturalearthdata.com) 1:10m Admin 0 – Countries |
-| ไฟล์ที่ใช้ | `countries-10m.json` จาก npm package [`world-atlas@2.0.2`](https://github.com/topojson/world-atlas) (TopoJSON ของ Natural Earth, ISC) |
-| การแปลง | `turf.buffer` ขยายออก 1 กม. → `turf.simplify` (tolerance 0.003°, highQuality) → ปัดพิกัด 3 ตำแหน่ง ได้ 17 polygon 1,893 จุด |
+ใช้เวลาสร้างราว 7 วินาที
 
-**สัญญาอนุญาต:** Natural Earth เป็น [public domain](https://www.naturalearthdata.com/about/terms-of-use/) ไม่ต้องให้เครดิต แต่ Natural Earth แนะนำให้อ้างอิง "Made with Natural Earth"
+**ตรวจแล้วว่าสามระดับซ้อนกันพอดี:** ในพื้นที่ทดสอบรอบรอยต่อ ขอนแก่น–มหาสารคาม–กาฬสินธุ์ ขอบจังหวัดของ layer 2 ตรงกับขอบอำเภอ (layer 3) และขอบตำบล (layer 4) ทุกช่วง (1,538/1,538) ขอบอำเภอตรงกับขอบตำบลทุกช่วง (2,090/2,090) การสร้างทุกระดับจากขอบตำบลจึงได้ผลเท่ากับใช้ layer 2/3 ตรงๆ
 
-**ทำไมขยายออก 1 กม.:** ขอบของ Natural Earth 10m ต่างจากเส้นชายแดนของ OSM ได้หลายร้อยเมตร ถ้าไม่ขยาย ปลายเส้นไทยที่ชนชายแดนจะขาด ผลข้างเคียงคืออาจเห็นปลายเส้นของประเทศเพื่อนบ้านยาวไม่เกิน ~1 กม. ตรงจุดที่มาชนชายแดนเมื่อซูมลึก
+### ป้ายชื่อ
 
-**สร้างใหม่**
+- วางที่จุดที่ "ลึก" ที่สุดของพื้นที่ (pole of inaccessibility) ของส่วนที่ใหญ่ที่สุด (เช่น แผ่นดินใหญ่ ไม่ใช่เกาะ) ความแม่นยำราว 1% ของขนาดพื้นที่
+- จังหวัด/อำเภอใช้รูปทรงแบบย่อจาก layer 2/3 ตำบลใช้รูปทรงเต็มจาก layer 4
+- ใส่เฉพาะ tile ที่จุดนั้นตกอยู่ ป้ายจึงไม่ซ้ำข้าม tile
 
-```js
-import * as turf from "@turf/turf";
-import { feature } from "topojson-client";
+### คุณภาพข้อมูลที่พบ
 
-const topo = await (await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-10m.json")).json();
-const th = feature(topo, topo.objects.countries).features.find((f) => f.properties.name === "Thailand");
-const outline = turf.simplify(turf.buffer(th, 1, { units: "kilometers" }), { tolerance: 0.003, highQuality: true });
-// แล้วเขียน outline.geometry เป็น THAILAND_OUTLINE ใน src/thailand.js
-```
+- `Admin_code` ของอำเภอซ้ำ 2 คู่ เช่น อ.เวียงเก่า (`A_code` 26) ได้ `Admin_code` 4016 ซ้ำกับ อ.ภูเวียง ที่ถูกควรเป็น 4026 ไม่กระทบการวาด (ใช้ `P_code` + `A_code`) แต่ระวังถ้าจะใช้ `Admin_code` ไป join ข้อมูล
+- ชื่อสะกดผิด "อำเภเมืองบึงกาฬ" (ตัดคำนำหน้าแบบเผื่อไว้แล้ว ป้ายจึงขึ้น "เมืองบึงกาฬ")
 
-## 4. ภูมิประเทศ (มุมมอง 3D)
+### สัญญาอนุญาต/เครดิต
+
+service ไม่ได้ระบุสัญญาอนุญาต มีแค่ copyright "GISTDA" **ก่อนนำไปใช้กับระบบที่เปิดให้คนทั่วไปใช้ ควรสอบถามเงื่อนไขกับ GISTDA**
+
+เครดิตที่แผนที่แสดง: `ขอบเขตการปกครอง: GISTDA (กรมการปกครอง)` (ลิงก์ไป gistdaportal.gistda.or.th)
+
+### ข้อจำกัด
+
+- **ข้อมูลปี 2556:** เขตที่ตั้งหรือเปลี่ยนแปลงหลังจากนั้นจะไม่ตรง ไม่ควรใช้เป็นหลักฐานทางกฎหมาย
+- **แนวชายแดน/ชายฝั่ง:** ไม่วาดเส้นของเราตรงนั้น เส้นประเทศ/ชายฝั่งที่เห็นเป็นของแผนที่ฐาน (OSM) ซึ่งอาจห่างจากขอบของข้อมูลกรมการปกครองได้หลายร้อยเมตรเมื่อซูมลึก
+- **พึ่งพา service ภายนอก:** ถ้า gistdaportal ล่มหรือย้าย URL และไม่มี cache บนดิสก์ จะไม่มีขอบเขตเลย (server ลองใหม่ทุก 60 วินาที) เปลี่ยน URL ได้ที่ `GISTDA_ADMIN_SERVICE` หรือ `tileMiddleware({ boundary: { service } })`
+- **หน่วยความจำตอนเริ่ม:** ราว 750 MB ระหว่างสร้าง เหลือราว 60 MB หลังเสร็จ
+
+## 2. ภูมิประเทศ (มุมมอง 3D)
 
 **ใช้ทำอะไร:** terrain และ hillshade เมื่อ `store.setView("3d")` (ปิดได้ด้วย `bindMapLibre(..., { terrain: false })`)
 
@@ -226,20 +113,20 @@ const outline = turf.simplify(turf.buffer(th, 1, { units: "kilometers" }), { tol
 
 **สัญญาอนุญาต/เครดิต:** แต่ละชุดข้อมูลต้นทางมีเงื่อนไขของตัวเอง ดู [รายการเครดิตทั้งหมด](https://github.com/tilezen/joerd/blob/master/docs/attribution.md) แผนที่แสดงลิงก์ไปหน้านั้นให้แล้ว
 
-## 5. แผนที่ฐาน (เฉพาะหน้าตัวอย่าง)
+## 3. แผนที่ฐาน (เฉพาะหน้าตัวอย่าง)
 
-library ไม่ได้บังคับแผนที่ฐาน หน้าตัวอย่างใช้:
+library ไม่ได้บังคับแผนที่ฐาน และไม่ได้ใช้ข้อมูลของแผนที่ฐานทำขอบเขต หน้าตัวอย่างใช้:
 
 | หน้า | แผนที่ฐาน | เงื่อนไข |
 | --- | --- | --- |
-| MapLibre, React (ซ้าย) | OpenFreeMap styles `liberty`, `positron`, `dark` | เครดิตเหมือนข้อ 1 |
+| MapLibre, React (ซ้าย) | [OpenFreeMap](https://openfreemap.org) styles `liberty`, `positron`, `dark` (ข้อมูล OpenStreetMap) | ODbL 1.0 / © OpenMapTiles แผนที่ฐานแสดงเครดิตเอง |
 | Leaflet, React (ขวา) | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | [Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/) ของ OSMF: ห้ามใช้หนัก ห้ามดึงเก็บล่วงหน้า ใช้กับ production ควรเปลี่ยนผู้ให้บริการ |
 
-หน้าตัวอย่างซ่อนเส้นจังหวัดของแผนที่ฐาน (`boundary_3` ใน liberty/positron, `boundary_state` ใน dark) เพราะเป็นของทุกประเทศ เส้นประเทศ (`admin_level` 2) ของแผนที่ฐานยังแสดงอยู่
+แผนที่ฐานของ OpenFreeMap มีเส้นจังหวัด/อำเภอของ OSM อยู่แล้ว หน้าตัวอย่างซ่อนไว้ด้วย `hideBasemapLayers: ["boundary_3", "boundary_state"]` ไม่ให้ซ้อนกับเส้นของเรา เส้นประเทศ (`admin_level` 2) ของแผนที่ฐานยังแสดงอยู่
 
-## 6. ฟอนต์ป้าย
+ป้ายของแผนที่ฐานใช้ฟอนต์ Noto Sans ของ OpenFreeMap (SIL OFL 1.1) `tileMiddleware` ส่งต่อคำขอ glyph ที่ไม่ใช่ Kanit ไปที่ `https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf` (เปลี่ยนได้ด้วย `tileMiddleware({ glyphs: { upstream } })` ถ้าใช้แผนที่ฐานอื่น)
 
-**ป้ายของ library: Kanit Regular**
+## 4. ฟอนต์ป้าย: Kanit Regular
 
 | | |
 | --- | --- |
@@ -253,18 +140,16 @@ glyph ที่สร้างตรวจเทียบกับ glyph Noto Sa
 
 glyph ที่ได้เป็นงานดัดแปลงจากฟอนต์ ใช้ OFL 1.1 เหมือนต้นฉบับ ชื่อ "Kanit" ไม่ได้เป็น Reserved Font Name จึงใช้ชื่อเดิมได้
 
-**ป้ายของแผนที่ฐาน: Noto Sans** (style ของ OpenFreeMap) `tileMiddleware` ส่งต่อคำขอ glyph ที่ไม่ใช่ Kanit ไปที่ `https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf` Noto Sans ใช้ [SIL OFL 1.1](https://openfontlicense.org) เช่นกัน ไม่ต้องแสดงเครดิตบนแผนที่
-
-## 7. library ที่ใช้
+## 5. library ที่ใช้
 
 | package | ใช้ที่ | สัญญาอนุญาต |
 | --- | --- | --- |
-| `@mapbox/vector-tile` | server: อ่าน tile ของ OpenFreeMap | BSD-3-Clause |
-| `pbf` | server: อ่าน/เขียน protobuf | BSD-3-Clause |
+| `pbf` | server: เขียน vector tile / อ่านเขียน glyph | BSD-3-Clause |
 | `maplibre-gl` (peer) | วาดแผนที่ | BSD-3-Clause |
 | `leaflet` (peer) | แผนที่ Leaflet | BSD-2-Clause |
 | `@maplibre/maplibre-gl-leaflet` (peer) | ซ้อน MapLibre ใน Leaflet | ISC |
 | `react` (peer) | React bindings | MIT |
+| `@mapbox/vector-tile` (dev) | test: อ่าน tile ที่ server สร้าง | BSD-3-Clause |
 | `@maplibre/maplibre-gl-style-spec` (dev) | test: ตรวจ style spec | ISC |
 | `opentype.js` (dev) | `scripts/build-glyphs.mjs`: อ่านไฟล์ฟอนต์ | MIT |
 
@@ -272,16 +157,41 @@ glyph ที่ได้เป็นงานดัดแปลงจากฟ�
 
 ## ทำไมต้องผ่าน server
 
-เส้นของ OpenFreeMap เป็นของทั้งโลก ไม่มี field ประเทศ และทุกเส้นระดับเดียวกันใน tile ถูกรวมเป็น feature เดียว (เช่น tile ซูม 5 กลางประเทศไทยมี 1 feature ที่มี 139 เส้น ครึ่งหนึ่งอยู่นอกไทย) filter ของ MapLibre (`["within", ...]`) เลือกได้ทั้ง feature หรือไม่เลือกเลย tile ชายแดนจะเสียเส้นไทยไปด้วย server จึงตัดเส้นทีละช่วงที่จุดข้ามชายแดนแทน
-
-ป้ายก็ทำที่ server ด้วยเหตุผลเดียวกัน (ต้องเลือกเฉพาะจุดในไทย) และได้ตัดคำนำหน้าชื่อไปพร้อมกัน ส่วนตำบลของ GISTDA ต้องรวมขอบร่วมให้เหลือเส้นเดียวก่อน (ข้อ 2) เบราว์เซอร์จึงโหลด tile ชุดเดียวที่รวมทุกอย่างแล้ว
+- **รวมขอบร่วมให้เหลือเส้นเดียวและจำแนกระดับ:** service ส่งข้อมูลเป็น polygon ถ้าวาดขอบของแต่ละพื้นที่ตรงๆ ขอบที่สองพื้นที่ใช้ร่วมกันจะถูกวาดซ้ำ เส้นประเหลื่อมกันจนดูเป็นเส้นทึบ และต้องรู้ทั้งสองฝั่งจึงบอกได้ว่าเป็นเส้นระดับไหน
+- **ขนาดข้อมูล:** ข้อมูลเต็มความละเอียดราว 145 MB ส่งให้เบราว์เซอร์ทั้งก้อนไม่ได้ server ย่อจุดตามซูมแล้วส่งเป็น tile เล็กๆ (1–45 KB)
+- **ฟอนต์:** แผนที่ต้องโหลด glyph ของ Kanit จาก server เดียวกัน
 
 ## การอ้างอิงในเอกสาร/รายงาน
 
 ตัวอย่างข้อความอ้างอิงเมื่อนำแผนที่ไปใช้ในรายงานหรือสิ่งพิมพ์:
 
-> ขอบเขตการปกครองและชื่อพื้นที่ระดับจังหวัด/อำเภอ: © ผู้ร่วมพัฒนา OpenStreetMap (ODbL) ผ่าน OpenFreeMap / © OpenMapTiles · ขอบเขตและชื่อตำบล: สำนักงานพัฒนาเทคโนโลยีอวกาศและภูมิสารสนเทศ (GISTDA) ข้อมูลกรมการปกครอง พ.ศ. 2556 · ขอบประเทศ: Natural Earth
+> ขอบเขตการปกครองและชื่อพื้นที่: สำนักงานพัฒนาเทคโนโลยีอวกาศและภูมิสารสนเทศ (GISTDA) จากข้อมูลกรมการปกครอง พ.ศ. 2556
 
-> Province and district boundaries and names: © OpenStreetMap contributors (ODbL), via OpenFreeMap / © OpenMapTiles. Subdistrict boundaries and names: GISTDA, from Department of Provincial Administration data (2013). Country outline: Made with Natural Earth.
+> Administrative boundaries and names: Geo-Informatics and Space Technology Development Agency (GISTDA), from Department of Provincial Administration data (2013).
 
-ถ้าใช้มุมมอง 3D ให้เพิ่ม: ภูมิประเทศ: Mapzen Terrain Tiles (ดูรายการแหล่งข้อมูลที่ https://github.com/tilezen/joerd/blob/master/docs/attribution.md)
+ถ้ามีแผนที่ฐานให้เพิ่มเครดิตของแผนที่ฐานนั้นด้วย เช่น "แผนที่ฐาน: © ผู้ร่วมพัฒนา OpenStreetMap ผ่าน OpenFreeMap / © OpenMapTiles" ถ้าใช้มุมมอง 3D ให้เพิ่ม "ภูมิประเทศ: Mapzen Terrain Tiles"
+
+---
+
+## ภาคผนวก: ทำไมไม่ใช้ OpenStreetMap / OpenFreeMap
+
+รุ่นก่อนหน้าของโปรเจกต์นี้ใช้เส้นขอบเขตจาก OpenFreeMap (ข้อมูล OpenStreetMap) แล้วเปลี่ยนมาใช้ข้อมูลกรมการปกครองทั้งหมด เพราะ:
+
+| ปัญหา | รายละเอียด |
+| --- | --- |
+| เส้นตำบลไม่ครบ | OSM มี relation ตำบล/แขวง (`admin_level` 8) 853 จากราว 7,400 (ราว 11%) จังหวัด (78) และอำเภอ (928) ครบ |
+| เส้นจังหวัดหยาบ | ตัวอย่างจังหวัดขอนแก่น ([relation 1908778](https://www.openstreetmap.org/relation/1908778)) 63 จาก 128 way มี `source=VMAP0` (แผนที่โลก 1:1,000,000 ที่นำเข้า OSM ช่วงแรก) ที่เหลือวาดจากภาพดาวเทียม Bing/Landsat |
+| ที่มาหลากหลาย | tag `source` ที่ระบุไว้มีทั้ง OCHA COD-AB / กรมแผนที่ทหาร, Longdo.com, ราชกิจจานุเบกษา, แผนที่ภาษีของ สถ. แต่ส่วนใหญ่ไม่ระบุ |
+| ไม่มีชื่อพื้นที่ | layer `place` ของ OpenMapTiles ไม่มีชื่อเขตการปกครองของไทย ต้องใช้จุดเมืองที่มี tag `capital` แทน (จังหวัดได้ อำเภอราว 80% ตำบลไม่มี) และป้ายวางที่ตัวเมือง ไม่ใช่กลางพื้นที่ |
+| แยกประเทศไม่ได้ | เส้นระดับ 4/6/8 ไม่มี field ประเทศ และ OpenMapTiles รวมทุกเส้นระดับเดียวกันใน tile เป็น feature เดียว ต้องตัดตามขอบประเทศเองที่ server |
+| ซูมต่ำไม่ครบ | Planetiler ใช้ Natural Earth แทน OSM ที่ซูม 0–4 ([Boundary.java](https://github.com/openmaptiles/planetiler-openmaptiles/blob/main/src/main/java/org/openmaptiles/layers/Boundary.java)) |
+| ไม่ตรงกับข้อมูลราชการ | เส้นอำเภอ/จังหวัดของ OSM กับเส้นตำบลของกรมการปกครองวิ่งคู่กันห่างราว 100–200 ม. ตามแนวเขต |
+
+ข้อมูล OSM ตรวจผ่าน Overpass API เมื่อ 21 ตุลาคม 2026:
+
+```
+[out:json][timeout:120];
+area["ISO3166-1"="TH"][admin_level=2]->.th;
+relation(area.th)["boundary"="administrative"]["admin_level"~"^(4|6|8)$"];
+out tags;
+```

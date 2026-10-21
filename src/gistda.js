@@ -8,6 +8,7 @@
 //   2. เส้น   ขอบของทุกตำบลเก็บครั้งเดียว พร้อมตำบลสองฝั่ง แล้วแต่ละระดับเลือกขอบที่เป็นขอบของพื้นที่ระดับนั้น:
 //            ตำบล (8) = ขอบทุกเส้นของ layer 4, อำเภอ (6) = ขอบระหว่างอำเภอ/จังหวัด, จังหวัด (4) = ขอบระหว่างจังหวัด
 //            ขอบที่มีตำบลฝั่งเดียว (ชายแดน/ชายฝั่ง) เป็นขอบของทุกระดับ แต่ละระดับจึงมีขอบครบรอบทุกพื้นที่
+//            ยกเว้นขอบร่วมที่สองตำบลวาดจุดไม่ตรงกัน (ห่างกันไม่กี่เมตร) ซึ่งจับคู่แล้วจำแนกจากสองตำบลนั้น
 //            จังหวัด ⊂ อำเภอ ⊂ ตำบลในข้อมูลชุดนี้ตรงกันทุกจุด เส้นทั้งสามระดับจึงซ้อนกันพอดี
 //   3. ย่อ    ต่อขอบของแต่ละระดับเป็นเส้นยาว (ตัดที่ทางแยก) แล้วย่อจุดทีละเส้นตามซูม ปลายเส้นคงที่
 //            ขอบร่วมจึงยังตรงกันทุกซูม
@@ -298,6 +299,66 @@ function pointKey(lng, lat) {
   return x * 2 ** 26 + y;
 }
 
+// ขอบร่วมที่สองตำบลวาดจุดไม่ตรงกันในข้อมูลห่างกันไม่เกินราว 2 ม. ส่วนชายฝั่งที่หันเข้าหากันห่างเกิน 20 ม.
+const MISMATCH_METERS = 5;
+const EARTH_CIRCUMFERENCE = 40075016.686;
+
+/**
+ * ขอบฝั่งเดียวแต่ละเส้น → ตำบลอื่นที่มีขอบฝั่งเดียวอยู่ห่างจากกึ่งกลางขอบไม่เกิน MISMATCH_METERS (ใกล้สุด) หรือ -1
+ * พิกัด Web Mercator 0–1: ระยะบนพื้นที่ละติจูด φ = ระยะ mercator × เส้นรอบโลก × cos φ
+ */
+function pairMismatched(edges, A, B, X, Y, owner) {
+  const CELL = 2e-6; // ≈ 80 ม. ใหญ่กว่าระยะที่หามาก ดูแค่ 3×3 ช่องรอบกึ่งกลางก็พอ
+  const cellKey = (cx, cy) => cx * 2 ** 20 + cy;
+  const grid = new Map();
+  for (const e of edges) {
+    const [ax, ay, bx, by] = [X[A[e]], Y[A[e]], X[B[e]], Y[B[e]]];
+    for (let cx = Math.floor(Math.min(ax, bx) / CELL); cx <= Math.floor(Math.max(ax, bx) / CELL); cx++) {
+      for (let cy = Math.floor(Math.min(ay, by) / CELL); cy <= Math.floor(Math.max(ay, by) / CELL); cy++) {
+        const k = cellKey(cx, cy);
+        if (!grid.has(k)) grid.set(k, []);
+        grid.get(k).push(e);
+      }
+    }
+  }
+
+  // ปลายสายขอบฝั่งเดียวของแต่ละตำบล (จุดที่ขอบฝั่งเดียวของตำบลนั้นมาถึงเส้นเดียว) เช่น จุดที่ชายฝั่งของสองตำบลมาบรรจบกัน
+  // ขอบชายฝั่งช่วงสั้นๆ ข้างจุดนั้นอยู่ใกล้ชายฝั่งของตำบลข้างๆ แต่ไม่ใช่ขอบร่วม: ใกล้สุดที่ปลายสายจึงไม่นับ
+  const degree = new Map();
+  const vertexOf = (v, t) => v * 2 ** 16 + t;
+  for (const e of edges) {
+    for (const v of [A[e], B[e]]) degree.set(vertexOf(v, owner[e]), (degree.get(vertexOf(v, owner[e])) ?? 0) + 1);
+  }
+  const chainEnd = (v, t) => degree.get(vertexOf(v, t)) === 1;
+
+  const partner = new Int32Array(edges.length).fill(-1);
+  edges.forEach((e, i) => {
+    const mx = (X[A[e]] + X[B[e]]) / 2;
+    const my = (Y[A[e]] + Y[B[e]]) / 2;
+    const cosLat = 1 / Math.cosh(Math.PI * (1 - 2 * my));
+    let best = (MISMATCH_METERS / (EARTH_CIRCUMFERENCE * cosLat)) ** 2;
+    const [cx, cy] = [Math.floor(mx / CELL), Math.floor(my / CELL)];
+    for (let i2 = -1; i2 <= 1; i2++) {
+      for (let j = -1; j <= 1; j++) {
+        for (const o of grid.get(cellKey(cx + i2, cy + j)) ?? []) {
+          if (owner[o] === owner[e]) continue;
+          const [ax, ay] = [X[A[o]], Y[A[o]]];
+          const [dx, dy] = [X[B[o]] - ax, Y[B[o]] - ay];
+          const len = dx * dx + dy * dy;
+          const t = len ? Math.max(0, Math.min(1, ((mx - ax) * dx + (my - ay) * dy) / len)) : 0;
+          if ((t === 0 && chainEnd(A[o], owner[o])) || (t === 1 && chainEnd(B[o], owner[o]))) continue;
+          const d = (ax + t * dx - mx) ** 2 + (ay + t * dy - my) ** 2;
+          if (d <= best) {
+            best = d;
+            partner[i] = owner[o];
+          }
+        }
+      }
+    }
+  });
+  return partner;
+}
+
 /**
  * ตัวสร้างเครือข่ายเส้นแบบเติมทีละชุด (อ่านตำบลทีละจังหวัด ไม่ต้องถือข้อมูลทั้งประเทศไว้พร้อมกัน)
  * @param {object} [fields]  ชื่อ field (ค่าเริ่มต้นจาก GISTDA_ADMIN_SERVICE.fields)
@@ -378,15 +439,28 @@ export function createIndexBuilder(fields = GISTDA_ADMIN_SERVICE.fields) {
       // ระดับที่หยาบที่สุดที่ขอบนี้เป็นเส้นแบ่ง: ขอบนอก (ชายฝั่ง/ชายแดน มีตำบลฝั่งเดียว) เป็นขอบของทุกระดับ
       const OUTER = 0;
       const split = new Uint8Array(E);
-      let outer = 0;
+      const classify = (s1, s2) => (tProvince[s1] !== tProvince[s2] ? Province : tAmphoe[s1] !== tAmphoe[s2] ? Amphoe : Tambon);
+      const oneSided = [];
       for (let e = 0; e < E; e++) {
-        const s1 = owner1.data[e];
         const s2 = owner2.data[e];
-        if (s2 === -1) {
+        if (s2 === -1) oneSided.push(e);
+        else split[e] = classify(owner1.data[e], s2);
+      }
+
+      // ขอบฝั่งเดียวที่มีขอบฝั่งเดียวของตำบลอื่นอยู่ใกล้ = ขอบร่วมที่สองตำบลวาดจุดไม่ตรงกัน (เช่น หางดง–เมืองเชียงใหม่ ห่างกัน 1–2 ม.)
+      // จำแนกจากสองตำบลนั้น ไม่ใช่ขอบนอก ไม่งั้นกลายเป็นเส้นจังหวัดกลางอำเภอ
+      // ชายฝั่งจริงที่หันหน้าเข้าหากันข้ามช่องแคบห่างกันเกิน 20 ม. จึงไม่ถูกจับคู่
+      const partner = pairMismatched(oneSided, A, B, X, Y, owner1.data);
+      let outer = 0;
+      let mismatched = 0;
+      for (let i = 0; i < oneSided.length; i++) {
+        const e = oneSided[i];
+        if (partner[i] < 0) {
           split[e] = OUTER;
           outer++;
         } else {
-          split[e] = tProvince[s1] !== tProvince[s2] ? Province : tAmphoe[s1] !== tAmphoe[s2] ? Amphoe : Tambon;
+          split[e] = classify(owner1.data[e], partner[i]);
+          mismatched++;
         }
       }
 
@@ -396,8 +470,45 @@ export function createIndexBuilder(fields = GISTDA_ADMIN_SERVICE.fields) {
       const lines = [];
       const start = new Int32Array(N + 1);
       const used = new Uint8Array(E);
+
+      // ตรงที่ชายฝั่ง/ชายแดนของสองตำบลมาบรรจบกันแบบจุดไม่ตรงกัน ขอบที่จับคู่บางช่วงเป็นตัวเชื่อมเส้นนอก
+      // ปลายเส้นของระดับนั้นที่ไม่มีอะไรต่อ ให้ต่อไปตามขอบที่จับคู่จนชนเส้นอื่น เส้นจึงไม่ขาด
+      const pairedAt = new Map();
+      for (let i = 0; i < oneSided.length; i++) {
+        if (partner[i] < 0) continue;
+        const e = oneSided[i];
+        for (const v of [A[e], B[e]]) {
+          if (!pairedAt.has(v)) pairedAt.set(v, []);
+          pairedAt.get(v).push(e);
+        }
+      }
+      const degree = new Int32Array(N);
+      const reconnect = (lv) => {
+        degree.fill(0);
+        for (let e = 0; e < E; e++) {
+          if (split[e] > lv) continue;
+          degree[A[e]]++;
+          degree[B[e]]++;
+        }
+        const added = new Set();
+        const queue = [...pairedAt.keys()].filter((v) => degree[v] === 1);
+        while (queue.length) {
+          const v = queue.pop();
+          if (degree[v] !== 1) continue;
+          const e = pairedAt.get(v).find((e) => split[e] > lv && !added.has(e));
+          if (e === undefined) continue;
+          added.add(e);
+          degree[A[e]]++;
+          degree[B[e]]++;
+          const w = A[e] === v ? B[e] : A[e];
+          if (degree[w] === 1) queue.push(w);
+        }
+        return added;
+      };
+
       for (const lv of [Province, Amphoe, Tambon]) {
-        const keep = (e) => split[e] <= lv;
+        const bridges = lv === Tambon ? null : reconnect(lv);
+        const keep = (e) => split[e] <= lv || !!bridges?.has(e);
 
         // ขอบที่แต่ละจุดต่ออยู่ (CSR) เฉพาะขอบของระดับนี้
         start.fill(0);
@@ -449,7 +560,7 @@ export function createIndexBuilder(fields = GISTDA_ADMIN_SERVICE.fields) {
         ...tambonLabels,
       ].filter(Boolean);
 
-      return { lines, labels, stats: { tambons: tProvince.length, points: N, edges: E, outerEdges: outer, lines: lines.length } };
+      return { lines, labels, stats: { tambons: tProvince.length, points: N, edges: E, outerEdges: outer, mismatchedEdges: mismatched, lines: lines.length } };
     },
   };
 }

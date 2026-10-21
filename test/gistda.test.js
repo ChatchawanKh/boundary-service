@@ -33,6 +33,29 @@ test("แต่ละระดับได้ขอบครบรอบขอ�
   assert.equal(segments(of(4)), 10 + 1);
 });
 
+test("ขอบร่วมที่สองตำบลวาดจุดไม่ตรงกัน (ห่างไม่กี่เมตร) จำแนกจากสองตำบล ไม่กลายเป็นขอบนอก", () => {
+  // ต.สาม ใส่จุดกลางบนขอบร่วมกับ ต.สอง (ขอบอำเภอ 100.10) เยื้องไป dx องศา ต.สอง ไม่มีจุดนี้
+  const shifted = (dx) => {
+    const features = tambons.features.map((f) => (f.properties.T_Name_T !== "ตำบลสาม" ? f : {
+      ...f,
+      geometry: { type: "Polygon", coordinates: [[[100.1, 13.1], [100.1 + dx, 13.05], [100.1, 13.0], [100.15, 13.0], [100.15, 13.1], [100.1, 13.1]]] },
+    }));
+    return buildAdminIndex({ provinces, amphoes, tambons: { type: "FeatureCollection", features } });
+  };
+  const segments = (index, lv) => index.lines.filter((l) => l.level === lv).reduce((n, l) => n + l.coords.length / 2 - 1, 0);
+
+  // เยื้อง ~2 ม.: ขอบ 100.10 ทั้งสามช่วง (1 จาก ต.สอง + 2 จาก ต.สาม) เป็นเส้นอำเภอ ไม่ขึ้นเป็นเส้นจังหวัด
+  const near = shifted(0.00002);
+  assert.deepEqual([near.stats.outerEdges, near.stats.mismatchedEdges], [10, 3]);
+  assert.equal(segments(near, 6), 10 + 3 + 1);
+  assert.equal(segments(near, 4), 10 + 1);
+
+  // เยื้อง ~30 ม. (เหมือนชายฝั่งที่หันเข้าหากันข้ามช่องแคบ): ยังเป็นขอบนอก
+  const far = shifted(0.0003);
+  assert.deepEqual([far.stats.outerEdges, far.stats.mismatchedEdges], [13, 0]);
+  assert.equal(segments(far, 4), 13 + 1);
+});
+
 test("ป้ายทุกระดับวางกลางพื้นที่ ตัดคำนำหน้า (รวม อำเภ ที่สะกดผิด) พื้นที่ใหญ่ได้ rank น้อย", () => {
   const { labels } = buildAdminIndex(adminData);
   const names = labels.map((l) => `${l.level}:${l.name}`);
